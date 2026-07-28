@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: typecheck · lint · unit · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json (pnpm 10)
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      # @spillway/shared + @spillway/pricing resolve to their dist/ (built output), so they
+      # MUST be built before typecheck / tests / db:migrate can resolve them. CI is a clean
+      # install with no prebuilt dist; locally dist already exists, which hid this.
+      - run: pnpm build:packages
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  # part-3/05 Ring 0 — lockfile integrity + dependency audit. The --frozen-lockfile flag (also enforced
+  # in the unit job) is the integrity guarantee: a lockfile diverged from the manifests dies here,
+  # proving no manual lockfile edit slipped in without a corresponding `pnpm install`. The audit blocks
+  # a merge on a HIGH/CRITICAL advisory. Isolated as its own fast (~90s) job so it fails independently.
+  lockfile-audit:
+    name: Ring 0 · lockfile integrity + dep audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile --ignore-scripts # HARD integrity gate — a divergent lockfile dies here
+      # Dependency audit — BLOCKING on a production HIGH/CRITICAL advisory (part-3/05 Ring 0). The
+      # drizzle-orm SQL-injection HIGH (improperly-escaped SQL identifiers) was fixed by the 0.45.2 bump,
+      # so the prod tree is now clean; a NEW prod HIGH fails the merge. --prod scopes to what actually
+      # ships (dev-only vite/vitest transitive advisories are out of scope for a runtime security gate).
+      - run: pnpm audit --prod --audit-level=high
+
+  integration:
+    name: integration (postgres service container)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.3-alpine
+        env:
+          POSTGRES_USER: spillway
+          POSTGRES_PASSWORD: spillway
+          POSTGRES_DB: spillway_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      # least-privilege role URLs (matches deploy.yml) — the programmatic migrator validates that
+      # DATABASE_URL/DATABASE_URL_JOBS carry the spillway_app/spillway_jobs roles, not the superuser
+      DATABASE_URL: postgres://spillway_app:spillway_app@localhost:5432/spillway_test
+      DATABASE_URL_JOBS: postgres://spillway_jobs:spillway_jobs@localhost:5432/spillway_test
+      # migrate as the superuser (grants + RLS need owner privileges); targets the CI service DB
+      MIGRATION_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      TEST_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      POSTGRES_IMAGE: postgres:16.3-alpine
+      SPILLWAY_ENC_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= # 32 zero-bytes, base64; test only
+      # WorkOS auth vars (ADR-023) are optional in test — no auth runs until M1.
+      PORT: '3001'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      # @spillway/shared + @spillway/pricing resolve to their dist/ (built output), so they
+      # MUST be built before typecheck / tests / db:migrate can resolve them. CI is a clean
+      # install with no prebuilt dist; locally dist already exists, which hid this.
+      - run: pnpm build:packages
+      # the grant migration (0001) GRANTs to these roles, so they must exist first
+      # (locally this is docker-entrypoint-initdb.d/init-roles.sql; CI has no such hook).
+      # CREATE ROLE needs the superuser URL — DATABASE_URL is now the unprivileged app role.
+      - run: psql "$MIGRATION_DATABASE_URL" -f apps/server/src/db/migrations/init-roles.sql
+      - run: pnpm db:migrate
+      - run: pnpm test:integration
+      - run: pnpm migration-lint

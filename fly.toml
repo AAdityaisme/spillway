@@ -1,0 +1,47 @@
+# fly.toml  (Fly.io v2 format)
+app = "spillway"
+primary_region = "iad"          # us-east (IAD). Change with: fly scale count --region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  LOG_LEVEL = "info"
+  # MUST match `fly scale count`. The 17 §3.6 singleton guard reads this; the in-process
+  # rate limiter + policy cache are single-instance until the ADR-016 Redis bundle lands.
+  # If you scale to N>1, bump this so the guard warns (limits become ~N x nominal per node).
+  SPILLWAY_INSTANCE_COUNT = "1"
+
+# Release command: runs migrations before new VM takes traffic.
+# drizzle-kit migrate is idempotent; concurrent deploys are safe because
+# drizzle-kit uses advisory locks on the migrations table.
+[deploy]
+  # migrate.ts has an import.meta.url main-guard → running it directly invokes
+  # runMigrations(). (Earlier `node -e "require(...esm...)"` failed: require-of-ESM
+  # is not default-on until Node 22.12; runtime image is node:22.4.)
+  release_command = "node dist/apps/server/src/db/migrate.js"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false        # ADR-015: no scale-to-zero; in-process rate limiters require persistence
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250                # reject with 503 above; prevents memory OOM under burst
+    soft_limit = 200                # Fly starts another machine above this if autoscale enabled
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"

@@ -1,0 +1,69 @@
+# .github/workflows/deploy.yml  (12-operations §3.4)
+#
+# M0 NOTE: trigger is `workflow_dispatch` (manual) until Fly is provisioned at M6.
+# At M6, switch the trigger to the bible's intended:
+#     on:
+#       push:
+#         branches: [main]
+# and add the FLY_API_TOKEN repo secret (`fly tokens create deploy -x 999999h`).
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.3-alpine
+        env:
+          POSTGRES_USER: spillway
+          POSTGRES_PASSWORD: spillway
+          POSTGRES_DB: spillway_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      DATABASE_URL: postgres://spillway_app:spillway_app@localhost:5432/spillway_test
+      DATABASE_URL_JOBS: postgres://spillway_jobs:spillway_jobs@localhost:5432/spillway_test
+      MIGRATION_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      TEST_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      POSTGRES_IMAGE: postgres:16.3-alpine
+      SPILLWAY_ENC_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= # 32 zero-bytes, base64; test only
+      PORT: '3001'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      # init-roles CREATEs roles + GRANTs → needs the superuser/owner URL, not the app role (expanded-audit HIGH #4).
+      - run: psql "${MIGRATION_DATABASE_URL:-$DATABASE_URL}" -f apps/server/src/db/migrations/init-roles.sql
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm db:migrate
+      - run: pnpm test
+      - run: pnpm test:integration
+      - run: pnpm test:e2e
+      - run: pnpm migration-lint
+      - run: pnpm build
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Pinned to a release SHA, not @master — a compromised master would run with our live
+      # FLY_API_TOKEN in scope (expanded-audit LOW). ed8efb3 == tag 1.6. Bump deliberately.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
+      - run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

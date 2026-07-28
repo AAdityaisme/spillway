@@ -1,0 +1,123 @@
+name: release-gates
+
+# part-3/05 Phase-0 release rings (Ring 0 lives in ci.yml on every PR; Rings 1–5 here). Manual/tag-
+# triggered — they exercise Docker, image scanning, and a Fly + Neon STAGING environment, so they never
+# gate a PR merge. Each ring must be green before the deploy cursor advances. Rings 3–5 no-op until the
+# staging secrets (FLY_API_TOKEN, STAGING_DATABASE_URL) are configured.
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-gates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Ring 1 — build the production image, boot it, verify /healthz answers and the process is non-root.
+  image-smoke:
+    name: Ring 1 · Docker build + healthz + non-root probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: spillway:ci
+      - name: boot + probe /healthz
+        # loadConfig runs before listen(): DATABASE_URL/_JOBS + SPILLWAY_ENC_KEY_V1 are required, but
+        # postgres.js is LAZY so /healthz (liveness) answers with NO live DB. JOBS_ENABLED=false keeps
+        # the scheduler from querying the (absent) DB. DB URLs are valid-FORMAT placeholders only.
+        run: |
+          docker run -d --name spillway_ci -p 3000:3000 \
+            -e PORT=3000 -e NODE_ENV=development -e JOBS_ENABLED=false \
+            -e DATABASE_URL='postgres://u:p@127.0.0.1:5432/db' \
+            -e DATABASE_URL_JOBS='postgres://u:p@127.0.0.1:5432/db' \
+            -e SPILLWAY_ENC_KEY_V1='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' \
+            spillway:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          test "${ok:-0}" = 1 || { docker logs spillway_ci; exit 1; }
+      - name: assert non-root
+        run: test "$(docker exec spillway_ci id -u)" != "0"
+
+  # Ring 2 — CycloneDX SBOM (syft) + vulnerability scan (trivy), blocking on CRITICAL/HIGH.
+  sbom-scan:
+    name: Ring 2 · SBOM (syft) + image scan (trivy)
+    runs-on: ubuntu-latest
+    needs: [image-smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with: { context: ., load: true, tags: 'spillway:ci' }
+      - name: SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: spillway:ci
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+      - name: trivy scan (block on CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: spillway:ci
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  # Ring 3 — staging migration drill: fresh-DB migrate + a rollback/backup-restore rehearsal.
+  migration-drill:
+    name: Ring 3 · staging migration drill
+    runs-on: ubuntu-latest
+    needs: [sbom-scan]
+    # Runs on dispatch/tag; requires the STAGING_DATABASE_URL secret to be configured.
+    env:
+      MIGRATION_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      - name: forward-migrate the staging DB (idempotent — no-op when current)
+        run: pnpm db:migrate
+      - name: migration-lint (RLS coverage + no missing policy)
+        run: pnpm migration-lint
+
+  # Ring 4 — SLO load gate: k6 against the real staging app (p50<=5ms, p99<=15ms enforced in the script).
+  slo-load:
+    name: Ring 4 · k6 SLO gate (staging)
+    runs-on: ubuntu-latest
+    needs: [migration-drill]
+    # Requires STAGING_BASE_URL to point at the staging app.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: grafana/setup-k6-action@v1
+      - name: k6 SLO run against staging
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: k6 run --quiet ops/k6/slo.js
+
+  # Ring 5 — bluegreen deploy + rollback runbook (Fly). Gated on a green Ring 1–4.
+  bluegreen-deploy:
+    name: Ring 5 · Fly bluegreen deploy
+    runs-on: ubuntu-latest
+    needs: [slo-load]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }} # tag-only; needs FLY_API_TOKEN configured
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: deploy (bluegreen — health-checked, auto-rolls-back on failure)
+        run: flyctl deploy --strategy=bluegreen --wait-timeout=300

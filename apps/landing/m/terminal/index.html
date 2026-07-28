@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spillway — one endpoint, every request governed before it spends</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="logo" href="#"><i></i>SPILLWAY</a>
+    <nav class="links"><a href="#policy">policy</a><a href="#route">routing</a><a href="#pricing">pricing</a><a href="#">docs</a></nav>
+    <div class="actions"><a class="btn btn-ghost" href="#">console</a><a class="btn btn-primary" href="#exit">$ get started</a></div>
+  </div>
+</header>
+
+<!-- 00 · INGRESS -->
+<section class="hero">
+  <span class="glow" id="glow" style="left:70%;top:40%"></span>
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="h1-wrap">
+        <span class="eyebrow rv">00 · INGRESS <span class="dim">· openai-compatible</span></span>
+        <h1 class="rv">One endpoint.<br />Every request, governed before it spends.</h1>
+        <p class="sub rv">Point your base URL at Spillway. Budgets, approvals, anomaly detection, and cost-aware routing run <span class="fn" title="Policy evaluates at the gateway — blocked requests never reach the provider and never bill.">before</span> the spend clears.</p>
+        <div class="cta-row rv">
+          <a class="btn btn-primary" href="#exit">$ get started</a>
+          <a class="btn btn-ghost" href="#">read the docs</a>
+        </div>
+      </div>
+      <div class="panel rv">
+        <div class="chrome"><i></i><i></i><i></i><span class="path">terminal — spillway</span><span class="badge" id="heroBadge">● live</span></div>
+        <pre class="code" id="heroCode"><span class="cursor"></span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STDOUT ribbon -->
+<div class="ribbon">
+  <div class="ribbon-inner">
+    <div class="cell"><span class="k">spend_blocked_today</span><span class="v amber" data-tick="1204" data-prefix="$">$1,204</span></div>
+    <div class="cell"><span class="k">policies_enforced</span><span class="v" data-tick="8342">8,342</span></div>
+    <div class="cell"><span class="k">anomalies_caught</span><span class="v" data-tick="312">312</span></div>
+    <div class="cell"><span class="k">tokens_routed</span><span class="v" data-tick="48211930">48,211,930</span></div>
+  </div>
+</div>
+
+<!-- 01 · POLICY -->
+<section class="sec" id="policy">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow rv">01 · POLICY</span>
+      <h2 class="rv">A budget is a config block.</h2>
+      <p class="sub rv">Limits cascade org → team → key. The gateway evaluates them on every request — declared once, enforced everywhere.</p>
+    </div>
+    <div class="two-col">
+      <div class="panel rv">
+        <div class="chrome"><i></i><i></i><i></i><span class="path">gateway/policy.budgets.ts</span></div>
+        <pre class="code"><span class="c-k">export const</span> <span class="c-f">budgets</span> = {
+  org: {
+    <span class="c-f">acme</span>: { limit: <span class="c-n">20_000</span>, period: <span class="c-s">"month"</span> },
+  },
+  team: {
+    <span class="c-f">platform</span>: { limit: <span class="c-n">5_000</span>, on_exceed: <span class="c-s">"block"</span> },
+  },
+  key: {
+    <span class="c-f">batch_embed</span>: {
+      limit: <span class="c-n">1_000</span>, period: <span class="c-s">"day"</span>,
+      on_exceed: <span class="c-s">"block"</span>,  <span class="c-c">// 402 before the provider is called</span>
+    },
+  },
+} <span class="c-k">satisfies</span> BudgetPolicy;</pre>
+      </div>
+      <div class="panel rv" id="meterPanel">
+        <div class="chrome"><i></i><i></i><i></i><span class="path">spillway · spend / june</span></div>
+        <div class="meters">
+          <div class="gm" style="--w:41%"><span class="k">org · acme</span><span class="track"><i class="fill"></i></span><span class="v">$8.2k / $20k</span></div>
+          <div class="gm" style="--w:63%"><span class="k">team · platform</span><span class="track"><i class="fill"></i></span><span class="v">$3.1k / $5k</span></div>
+          <div class="gm hot" style="--w:97%"><span class="k">key · batch_embed</span><span class="track"><i class="fill"></i></span><span class="v">$970 / $1k</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 02 · DENY -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow rv">02 · DENY</span>
+      <h2 class="rv">The block, caught in the log.</h2>
+      <p class="sub rv">The request from ingress just hit the batch_embed cap. It never reached a provider. It never billed.</p>
+    </div>
+    <div class="panel rv">
+      <div class="chrome"><i></i><i></i><i></i><span class="path">gateway · access.log — tail -f</span></div>
+      <div class="logstream">
+        <span class="row"><span class="t">09:41:18.221</span>  <span class="ok">200</span>  POST /v1/chat/completions  key=prod_chat    model=claude-haiku     4ms</span>
+        <span class="row"><span class="t">09:41:18.984</span>  <span class="ok">200</span>  POST /v1/chat/completions  key=growth_agent model=gpt-4.1-mini     6ms</span>
+        <span class="row hl"><span class="t">09:41:19.312</span>  <span class="deny">402</span>  POST /v1/embeddings        key=batch_embed  <span class="deny">BUDGET_EXCEEDED · blocked pre-spend · $0.00 billed</span></span>
+        <span class="row"><span class="t">09:41:19.877</span>  <span class="ok">200</span>  POST /v1/chat/completions  key=prod_chat    model=claude-haiku     3ms</span>
+        <span class="row"><span class="t">09:41:20.410</span>  <span class="ok">200</span>  POST /v1/chat/completions  key=support_bot  model=flash-lite       5ms</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 · APPROVE -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap">
+    <div class="two-col">
+      <div class="copy">
+        <span class="eyebrow rv">03 · APPROVE</span>
+        <h2 class="rv">An approval is a signed diff.</h2>
+        <p class="sub rv">Raising a limit is a change to policy — reviewed, approved, and recorded like one. Quorums, delegation, expiry. The audit log writes itself.</p>
+      </div>
+      <div class="panel rv">
+        <div class="chrome"><i></i><i></i><i></i><span class="path">change #482 · budgets.batch_embed</span><span class="badge">✓ approved</span></div>
+        <div class="diff">
+          <span class="l meta">@@ policy.budgets.ts · key.batch_embed @@</span>
+          <span class="l del">-      limit: 1_000, period: "day",</span>
+          <span class="l add">+      limit: 1_500, period: "day",</span>
+          <span class="l meta">&nbsp;</span>
+          <span class="l meta">Requested-by: dev-platform · 09:44 UTC</span>
+          <span class="l sig">Approved-by:  cfo@acme · quorum 1/1 · sig 0x9f3a…c41d</span>
+          <span class="l meta">Applied:      09:51 UTC · stream resumed</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 · DETECT -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap">
+    <div class="two-col">
+      <div class="panel rv" style="order:0">
+        <div class="chrome"><i></i><i></i><i></i><span class="path">anomaly.log — tail -f</span></div>
+        <div class="logstream" id="alog">
+          <span class="row"><span class="t">09:40:12</span>  <span class="ok">PASS</span>  org daily forecast within budget</span>
+          <span class="row"><span class="t">09:40:41</span>  <span class="deny">ACT </span>  auto-suspend armed · batch_embed</span>
+          <span class="row hl"><span class="t">09:41:07</span>  <span class="deny">WARN</span>  batch_embed at 4.2× weekday baseline · z=3.8 · vendor=openai · Δ+$312/hr</span>
+          <span class="row"><span class="t">09:41:22</span>  <span class="ok">PASS</span>  key prod_chat within baseline</span>
+          <span class="row"><span class="t">09:41:58</span>  <span class="ok">PASS</span>  team platform run-rate normal</span>
+        </div>
+      </div>
+      <div class="copy">
+        <span class="eyebrow rv">04 · DETECT</span>
+        <h2 class="rv">The spike, seen before the invoice.</h2>
+        <p class="sub rv">Weekday-aware baselines per org, team, and key. Trend breaks fire alerts — and can suspend the key on their own if you let them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 · ROUTE -->
+<section class="sec" style="padding-top:0" id="route">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow rv">05 · ROUTE</span>
+      <h2 class="rv">The route ledger decides in the open.</h2>
+      <p class="sub rv">Every approved request exits through the cheapest model that holds your quality bar. The reasoning is a column, not a secret.</p>
+    </div>
+    <div class="panel rv">
+      <div class="chrome"><i></i><i></i><i></i><span class="path">router · decision table</span></div>
+      <table class="rtable">
+        <thead><tr><th>candidate</th><th>$ / 1k tok</th><th>p50 latency</th><th>quality</th><th>chosen</th><th>why</th></tr></thead>
+        <tbody>
+          <tr><td>gpt-4.1</td><td>$0.0125</td><td>2.9s</td><td>0.97</td><td></td><td class="c-c">// over budget for tier</td></tr>
+          <tr class="chosen"><td>gpt-4.1-mini</td><td>$0.0016</td><td>2.1s</td><td>0.94</td><td class="ok">✓</td><td class="c-c">// clears 0.85 bar at −87% cost</td></tr>
+          <tr><td>claude-haiku</td><td>$0.0008</td><td>1.3s</td><td>0.81</td><td></td><td class="c-c">// under quality bar for this task</td></tr>
+          <tr><td>flash-lite</td><td>$0.0004</td><td>1.1s</td><td>0.74</td><td></td><td class="c-c">// under quality bar</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ARCH -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow rv">ARCH</span>
+      <h2 class="rv">Where it sits.</h2>
+    </div>
+    <div class="panel arch-panel arch rv">
+      <svg viewBox="0 0 900 250" aria-label="Your app calls Spillway; Spillway governs and routes to providers and reports to your finance stack">
+        <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8z" fill="#5B626C"/></marker></defs>
+        <g font-family="JetBrains Mono,monospace" font-size="12">
+          <rect x="20" y="95" width="150" height="60" rx="8" fill="#16191F" stroke="rgba(255,255,255,0.14)"/>
+          <text x="95" y="122" text-anchor="middle" fill="#E7E9EC">your app</text>
+          <text x="95" y="140" text-anchor="middle" fill="#5B626C" font-size="10">base_url swap</text>
+          <path d="M170 125 H 250" stroke="#5B626C" stroke-width="1.2" marker-end="url(#a)"/>
+          <rect x="255" y="55" width="270" height="140" rx="8" fill="#111318" stroke="rgba(0,102,204,0.45)"/>
+          <text x="275" y="83" fill="#E7E9EC" font-weight="700">SPILLWAY</text>
+          <text x="275" y="101" fill="#5B626C" font-size="10">gateway · /v1 · openai-compatible</text>
+          <g font-size="10" fill="#9BA1AA">
+            <rect x="273" y="115" width="108" height="24" rx="5" fill="rgba(0,102,204,0.12)" stroke="rgba(0,102,204,0.3)"/><text x="327" y="131" text-anchor="middle">budgets</text>
+            <rect x="391" y="115" width="116" height="24" rx="5" fill="rgba(0,102,204,0.12)" stroke="rgba(0,102,204,0.3)"/><text x="449" y="131" text-anchor="middle">approvals</text>
+            <rect x="273" y="149" width="108" height="24" rx="5" fill="rgba(0,102,204,0.12)" stroke="rgba(0,102,204,0.3)"/><text x="327" y="165" text-anchor="middle">anomaly</text>
+            <rect x="391" y="149" width="116" height="24" rx="5" fill="rgba(0,102,204,0.12)" stroke="rgba(0,102,204,0.3)"/><text x="449" y="165" text-anchor="middle">routing</text>
+          </g>
+          <path d="M525 100 C 580 100, 590 80, 640 80" stroke="#5B626C" stroke-width="1.2" marker-end="url(#a)"/>
+          <path d="M525 125 H 640" stroke="#5B626C" stroke-width="1.2" marker-end="url(#a)"/>
+          <path d="M525 150 C 580 150, 590 170, 640 170" stroke="#5B626C" stroke-width="1.2" marker-end="url(#a)"/>
+          <rect x="645" y="62" width="235" height="36" rx="8" fill="#16191F" stroke="rgba(255,255,255,0.14)"/><text x="762" y="85" text-anchor="middle" fill="#9BA1AA">openai</text>
+          <rect x="645" y="107" width="235" height="36" rx="8" fill="#16191F" stroke="rgba(255,255,255,0.14)"/><text x="762" y="130" text-anchor="middle" fill="#9BA1AA">anthropic · google</text>
+          <rect x="645" y="152" width="235" height="36" rx="8" fill="#16191F" stroke="rgba(255,255,255,0.14)"/><text x="762" y="175" text-anchor="middle" fill="#9BA1AA">any openai-compat</text>
+          <path d="M390 195 V 226" stroke="#5B626C" stroke-width="1.2" stroke-dasharray="3 4" marker-end="url(#a)"/>
+          <text x="404" y="234" fill="#5B626C" font-size="10">chargeback · audit exports → your finance stack</text>
+          <circle id="pkt" r="3.5" fill="#0066cc"><animateMotion dur="4s" repeatCount="indefinite" path="M170 125 H 250 L 390 125 L 525 125 H 640"/></circle>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="sec" style="padding-top:0" id="pricing">
+  <div class="wrap">
+    <div class="sec-head">
+      <span class="eyebrow rv">PRICING <span class="dim">· plans.toml</span></span>
+      <h2 class="rv">Uncomment a plan.</h2>
+    </div>
+    <div class="plans">
+      <div class="plan panel rv"><span class="nm"># free</span><div class="price">$0<span> /mo</span></div><ul><li>one endpoint, every model</li><li>budgets &amp; alerts</li><li>7-day history</li></ul><a class="btn btn-ghost" href="#exit">select</a></div>
+      <div class="plan panel rv"><span class="nm"># pro</span><div class="price">$49<span> /mo</span></div><ul><li>routing policies</li><li>anomaly detection</li><li>90-day traces</li></ul><a class="btn btn-ghost" href="#exit">select</a></div>
+      <div class="plan panel rec rv"><span class="nm">governance</span><div class="price">$299<span> /mo</span></div><ul><li>approval workflows</li><li>hard budget enforcement</li><li>chargeback + audit exports</li></ul><a class="btn btn-primary" href="#exit">select</a></div>
+      <div class="plan panel rv"><span class="nm"># enterprise</span><div class="price">custom</div><ul><li>in-region / on-prem</li><li>sso · saml · scim</li><li>sla + support</li></ul><a class="btn btn-ghost" href="#exit">talk to us</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- EXIT 0 -->
+<section class="bookend" id="exit">
+  <div class="wrap">
+    <span class="eyebrow rv">EXIT 0</span>
+    <h2 class="rv" style="margin-top:14px">Fire your own first request.</h2>
+    <div class="panel rv">
+      <div class="chrome"><i></i><i></i><i></i><span class="path">sh</span></div>
+      <div class="prompt-line"><span class="ps">$</span><span class="mono" style="color:var(--tx-2)">export OPENAI_BASE_URL=https://api.spillway.dev/v1</span></div>
+      <div class="prompt-line" style="border-top:1px solid var(--hair)"><span class="ps">&gt;</span><input type="email" placeholder="your@work-email — we'll send a key" aria-label="Work email" /><button class="btn btn-primary">issue key</button></div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-cols">
+      <div><h4>spillway</h4><p style="font-size:13.5px;max-width:32ch;line-height:1.7">The control plane where AI spend is governed, not just observed.</p></div>
+      <div><h4>product</h4><ul><li><a href="#policy">policy</a></li><li><a href="#route">routing</a></li><li><a href="#pricing">pricing</a></li></ul></div>
+      <div><h4>developers</h4><ul><li><a href="#">docs</a></li><li><a href="#">api reference</a></li><li><a href="#">status</a></li></ul></div>
+      <div><h4>legal</h4><ul><li><a href="#">privacy</a></li><li><a href="#">terms</a></li><li><a href="#">security</a></li></ul></div>
+    </div>
+    <div class="footer-legal"><span>© 2026 spillway labs, inc. · alpha — figures illustrative</span><span>soc 2 in progress</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // nav hairline
+  var nav = document.getElementById('nav');
+  addEventListener('scroll', function () { nav.classList.toggle('scrolled', scrollY > 8); }, { passive: true });
+
+  // reveals
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+
+  // meter trigger
+  var mp = document.getElementById('meterPanel');
+  if (mp) new IntersectionObserver(function (es, o) { if (es[0].isIntersecting) { mp.classList.add('in-view'); o.disconnect(); } }, { threshold: 0.5 }).observe(mp);
+
+  // hero typed curl → streamed response
+  var code = document.getElementById('heroCode');
+  var CURL = [
+    ['c-f', 'curl'], ['', ' https://api.spillway.dev/v1/chat/completions \\\n'],
+    ['', '  -H '], ['c-s', '"Authorization: Bearer $SPILLWAY_KEY"'], ['', ' \\\n'],
+    ['', '  -d '], ['c-s', "'"], ['', '{'], ['c-s', '"model"'], ['', ':'], ['c-s', '"auto"'], ['', ','], ['c-s', '"team"'], ['', ':'], ['c-s', '"growth"'], ['', ','], ['c-s', '"messages"'], ['', ':[…]}'], ['c-s', "'"], ['', '\n'],
+  ];
+  var RESP = [
+    ['c-c', '\n↳ streaming…\n\n'],
+    ['', '{\n'],
+    ['', '  '], ['c-s', '"id"'], ['', ': '], ['c-s', '"cmpl_8f2a4c"'], ['', ',\n'],
+    ['', '  '], ['c-s', '"model"'], ['', ': '], ['c-s', '"gpt-4.1-mini"'], ['', ',\n'],
+    ['', '  '], ['c-s', '"usage"'], ['', ': { '], ['c-s', '"total_tokens"'], ['', ': '], ['c-n', '412'], ['', ' },\n'],
+    ['', '  '], ['c-s', '"spillway"'], ['', ': {\n'],
+    ['', '    '], ['c-s', '"policy"'], ['', ': '], ['c-s', '"allowed"'], ['', ',\n'],
+    ['', '    '], ['c-s', '"budget_remaining"'], ['', ': '], ['c-n', '1029.44'], ['', ',\n'],
+    ['', '    '], ['c-s', '"saved_vs_frontier"'], ['', ': '], ['c-s', '"-87%"'], ['', '\n'],
+    ['', '  }\n}\n'],
+  ];
+  function render(tokens, upto) {
+    var html = '', count = 0;
+    for (var i = 0; i < tokens.length; i++) {
+      var cls = tokens[i][0], text = tokens[i][1];
+      var take = Math.max(0, Math.min(text.length, upto - count));
+      count += text.length;
+      if (take <= 0) continue;
+      var chunk = text.slice(0, take).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      html += cls ? '<span class="' + cls + '">' + chunk + '</span>' : chunk;
+    }
+    return html;
+  }
+  var total = function (t) { return t.reduce(function (n, x) { return n + x[1].length; }, 0); };
+  if (reduce) {
+    code.innerHTML = render(CURL, 1e9) + render(RESP, 1e9);
+  } else {
+    var n = 0, N1 = total(CURL), N2 = total(RESP), phase = 0;
+    (function tick() {
+      if (phase === 0) {
+        n += 2;
+        code.innerHTML = render(CURL, n) + '<span class="cursor"></span>';
+        if (n >= N1) { phase = 1; n = 0; setTimeout(tick, 500); return; }
+        setTimeout(tick, 18);
+      } else if (phase === 1) {
+        n += 4;
+        code.innerHTML = render(CURL, 1e9) + render(RESP, n) + '<span class="cursor"></span>';
+        if (n >= N2) { phase = 2; setTimeout(tick, 4200); return; }
+        setTimeout(tick, 14);
+      } else { phase = 0; n = 0; setTimeout(tick, 60); }
+    })();
+  }
+
+  // ribbon tickers
+  if (!reduce) {
+    document.querySelectorAll('[data-tick]').forEach(function (el) {
+      var v = parseInt(el.getAttribute('data-tick'), 10);
+      var prefix = el.getAttribute('data-prefix') || '';
+      setInterval(function () {
+        v += Math.floor(Math.random() * 5);
+        el.textContent = prefix + v.toLocaleString('en-US');
+      }, 1800 + Math.random() * 900);
+    });
+  }
+
+  // hero glow follows cursor
+  var glow = document.getElementById('glow');
+  if (glow && !reduce) {
+    document.querySelector('.hero').addEventListener('pointermove', function (e) {
+      glow.style.left = e.clientX + 'px';
+      glow.style.top = e.clientY + scrollY + 'px';
+    }, { passive: true });
+  }
+})();
+</script>
+</body>
+</html>

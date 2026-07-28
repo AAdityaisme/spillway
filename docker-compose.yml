@@ -1,0 +1,25 @@
+# docker-compose.yml
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16.3-alpine # pinned minor; bump only in a deliberate PR
+    container_name: spillway-pg
+    environment:
+      POSTGRES_USER: spillway
+      POSTGRES_PASSWORD: spillway
+      POSTGRES_DB: spillway_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./apps/server/src/db/migrations/init-roles.sql:/docker-entrypoint-initdb.d/01-init-roles.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U spillway -d spillway_dev']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pg_data:

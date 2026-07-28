@@ -1,0 +1,69 @@
+{
+  "name": "spillway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Spillway — the control plane where AI spend is governed, not just observed.",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@>=3.0.0 <5.0.7": "^5.0.7",
+      "shell-quote@<=1.8.4": "^1.9.0",
+      "fast-uri@>=3.0.0 <3.1.4": "^3.1.4",
+      "find-my-way@<=9.6.0": "^9.7.0"
+    }
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
+    "dev:web": "pnpm -F web dev",
+    "db:up": "docker compose up -d && docker compose exec postgres pg_isready -U spillway -d spillway_dev --timeout 30",
+    "db:down": "docker compose down",
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env apps/server/src/db/migrate.ts",
+    "db:studio": "drizzle-kit studio --config drizzle.config.ts",
+    "db:seed": "tsx --env-file-if-exists=.env tools/seed/index.ts",
+    "seed:demo": "tsx --env-file-if-exists=.env tools/seed/demo.ts",
+    "dev:token": "tsx --env-file-if-exists=.env tools/dev-token.ts",
+    "pricing:sync": "tsx --env-file-if-exists=.env apps/server/src/db/pricing-sync.ts",
+    "registry:sync": "tsx --env-file-if-exists=.env apps/server/src/db/registry-sync.ts",
+    "catalog:sync": "pnpm pricing:sync && pnpm registry:sync",
+    "certify:smoke": "tsx --env-file-if-exists=.env apps/server/src/jobs/certifier-smoke.ts",
+    "build:openapi": "tsx tools/openapi/build.ts",
+    "test": "vitest run --project unit --passWithNoTests",
+    "test:web": "vitest run --project web --passWithNoTests",
+    "test:integration": "vitest run --project integration --passWithNoTests",
+    "test:e2e": "vitest run --project integration apps/server/src/e2e.integration.test.ts",
+    "test:all": "vitest run --passWithNoTests",
+    "test:watch": "vitest --reporter=verbose",
+    "test:coverage": "vitest run --project unit --coverage --passWithNoTests",
+    "migration-lint": "vitest run apps/server/src/db/rls-lint.test.ts",
+    "gate": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:web && pnpm test:integration && pnpm migration-lint && pnpm build",
+    "fixtures:record": "RECORD_FIXTURES=true vitest run apps/server/test/fixtures --passWithNoTests",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:packages": "pnpm -F @spillway/shared build && pnpm -F @spillway/pricing build && pnpm -F @spillway/certifier build",
+    "build": "pnpm build:packages && pnpm -F web build && tsc -p apps/server/tsconfig.build.json",
+    "stress": "TESTCONTAINERS_RYUK_DISABLED=true tsx tools/stress/index.ts"
+  },
+  "devDependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
+    "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.49.1",
+    "@testcontainers/postgresql": "^10.16.0",
+    "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^2.1.9",
+    "drizzle-kit": "^0.30.1",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.9",
+    "zod": "3.25.76"
+  }
+}

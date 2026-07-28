@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<meta name="robots" content="noindex" />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#f8f9fb" />
+<title>Spillway · The control plane where AI spend is governed</title>
+<meta name="description" content="Budgets that block before spend, approval workflows, anomaly detection, and cost-aware routing. Every model provider, one OpenAI-compatible endpoint." />
+<link rel="preload" href="/fonts/jetbrains-mono-var.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="/fonts/instrument-serif-normal.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%230066cc' stroke-width='2.5'/%3E%3Cline x1='4' y1='19' x2='28' y2='13' stroke='%230066cc' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%230066cc'/%3E%3C/svg%3E" />
+<meta property="og:title" content="Spillway · The control plane where AI spend is governed" />
+<meta property="og:description" content="Budgets that block before spend, approval workflows, anomaly detection, and cost-aware routing. Every model provider, one OpenAI-compatible endpoint." />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="og.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="stylesheet" href="styles.css" />
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "FAQPage",
+ "mainEntity": [
+  {
+   "@type": "Question",
+   "name": "What happens if Spillway goes down?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Requests fail open: if the gateway is ever unreachable, your client can fall back to the provider directly and your product keeps working. We sit in the path to govern spend, not to hold your traffic hostage."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Do you store my prompts and responses?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Not by default. Request and response bodies are dropped after the decision; metadata (tokens, cost, route, verdict) is what we keep. Body retention is explicit opt-in, per org, with a retention window you control."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Does streaming and tool-calling still work?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Yes. SSE streams, function calling, JSON mode, and vision payloads pass through untouched. The policy check happens before the request leaves the gateway; after that, bytes flow straight through."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Which providers are behind the endpoint?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "OpenAI, Anthropic, Google, Azure OpenAI, Bedrock, Mistral, and Cohere, plus anything OpenAI-compatible: vLLM, Ollama, TGI, or your own gateway. One key, one bill, one policy layer."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Can we run it in our region, or on-prem?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "The Enterprise tier ships in-region and on-prem deployments with SSO/SAML, SCIM, and an SLA. The policy engine is the same one the cloud runs."
+   }
+  },
+  {
+   "@type": "Question",
+   "name": "Why not just use each provider's spend limits?",
+   "acceptedAnswer": {
+    "@type": "Answer",
+    "text": "Per-provider caps are monthly, coarse, and post-hoc; they cannot cascade org \u2192 team \u2192 key, cannot require an approval, and cannot see your other providers. A control plane enforces one policy across all of them, before the spend."
+   }
+  }
+ ]
+}
+</script>
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@type": "SoftwareApplication",
+ "name": "Spillway",
+ "applicationCategory": "DeveloperApplication",
+ "operatingSystem": "Web",
+ "description": "The control plane where AI spend is governed, not just observed. Budgets that block before spend, approval workflows, anomaly detection, and cost-aware routing behind one OpenAI-compatible endpoint.",
+ "offers": [
+  {
+   "@type": "Offer",
+   "name": "Free",
+   "price": "0",
+   "priceCurrency": "USD"
+  },
+  {
+   "@type": "Offer",
+   "name": "Pro",
+   "price": "49",
+   "priceCurrency": "USD"
+  },
+  {
+   "@type": "Offer",
+   "name": "Governance",
+   "price": "299",
+   "priceCurrency": "USD"
+  }
+ ]
+}
+</script>
+</head>
+<body>
+<script>
+  /* first paint is the film's first frame, not a flash of the page.
+     First visit per tab only. chart.js removes the class when the film
+     ends or can't run; the timeout is the failsafe if chart.js never
+     loads at all. Input arriving before the module loads is recorded so
+     an impatient visitor's scroll still skips the film. */
+  (function () {
+    var seen = false;
+    try {
+      seen = !!sessionStorage.getItem('mFilmSeen');
+    } catch (e) {}
+    if (
+      !seen &&
+      matchMedia('(min-width: 1000px)').matches &&
+      !matchMedia('(prefers-reduced-motion: reduce)').matches
+    ) {
+      document.body.classList.add('launching');
+      setTimeout(function () {
+        document.body.classList.remove('launching');
+      }, 7000);
+      var early = function () {
+        window.__mSkip = true;
+      };
+      addEventListener('wheel', early, { once: true, passive: true });
+      addEventListener('pointerdown', early, { once: true });
+      addEventListener('keydown', early, { once: true });
+    }
+  })();
+</script>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ═══════════ THE SPILLWAY · one diagonal line through the whole page ═══════════ -->
+<div class="spillway" aria-hidden="true">
+  <div class="plane" id="plane">
+    <i class="bands"></i>
+    <i class="traveller" id="traveller"></i>
+    <div class="waymarks">
+      <span id="waymarkA"><b data-way="top">GOVERNED SPEND</b> · <b data-way="console">ONE ENDPOINT</b> · <b data-way="setup">EVERY PROVIDER</b> · <b data-way="how">POLICY AT THE GATEWAY</b> · <b data-way="actBudgets">BLOCKED BEFORE THE INVOICE</b> · <b data-way="actApprovals">APPROVALS WITH QUORUM</b> · <b data-way="actAnomaly">THE SPIKE SEEN FIRST</b> · <b data-way="actRouting">ROUTED AND REPLAYABLE</b> ·&nbsp;</span>
+      <span id="waymarkB"><b data-way="top">GOVERNED SPEND</b> · <b data-way="console">ONE ENDPOINT</b> · <b data-way="setup">EVERY PROVIDER</b> · <b data-way="how">POLICY AT THE GATEWAY</b> · <b data-way="actBudgets">BLOCKED BEFORE THE INVOICE</b> · <b data-way="actApprovals">APPROVALS WITH QUORUM</b> · <b data-way="actAnomaly">THE SPIKE SEEN FIRST</b> · <b data-way="actRouting">ROUTED AND REPLAYABLE</b> ·&nbsp;</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ NAV ═══════════ -->
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="logo" href="#"><i></i>SPILLWAY</a>
+    <nav class="links">
+      <a href="#product">Product</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#">Docs</a>
+    </nav>
+    <div class="actions">
+      <a class="btn btn-ghost" href="#console">See the gateway</a>
+      <a class="btn btn-primary" href="#cta">Start free</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero" id="top">
+  <div class="hero-grat" aria-hidden="true"></div>
+  <div class="hero-axis" aria-hidden="true">
+    <span style="top:9%">org cap · $10k/day ·</span>
+    <span style="top:62%">team cap · $1k/day ·</span>
+    <span style="top:84%">key cap · $100/day ·</span>
+  </div>
+  <div class="hero-halo" aria-hidden="true"></div>
+  <div class="hero-field" id="field" aria-hidden="true"></div>
+  <video id="launchVideo" class="launch-video" muted playsinline preload="none" aria-hidden="true"></video>
+  <div class="expose-flash" aria-hidden="true"></div>
+  <div class="film-cap" id="filmCap" aria-hidden="true"><span id="filmCapText"></span><span class="film-skip">scroll to skip</span></div>
+  <div class="wrap">
+    <span class="odometer-pill rv"><em></em>DEMO ENVIRONMENT · <span class="live num">$1,204</span> BLOCKED BEFORE IT WAS SPENT</span>
+    <h1 class="h1 rv rv-d1">The control plane where <br />AI spend is <span class="fn em" tabindex="0" aria-describedby="fnTip">governed<span class="tip" id="fnTip" role="tooltip">Enforced at the gateway before a request reaches any provider.</span></span>, <br />not just observed.</h1>
+    <p class="lead rv rv-d2">Point your OpenAI client at one endpoint. Budgets, approvals, and anomaly detection enforce at the gateway: a 402 before the spend, not a dashboard after the invoice.</p>
+    <form class="capture rv rv-d3" onsubmit="return false">
+      <input type="email" placeholder="What's your work email?" aria-label="Work email" />
+      <button class="btn btn-primary" type="submit">Start free</button>
+    </form>
+    <a class="mlink console-link rv rv-d3" href="#console">See the gateway →</a>
+    <button class="replay rv rv-d3" id="replayFilm" type="button" aria-label="Replay the opening sequence">↻ replay the intercept</button>
+  </div>
+  <div class="ribbon" aria-hidden="true">
+    <div class="ribbon-track" id="ribbon">
+      <span class="stat"><span class="k">Requests routed</span><span class="v num">184,203</span></span>
+      <span class="stat"><span class="k">Anomalies caught</span><span class="v num">312</span></span>
+      <span class="stat"><span class="k">Approval turnaround</span><span class="v num">6 min median</span></span>
+      <span class="stat"><span class="k">Requests routed</span><span class="v num">184,203</span></span>
+      <span class="stat"><span class="k">Anomalies caught</span><span class="v num">312</span></span>
+      <span class="stat"><span class="k">Approval turnaround</span><span class="v num">6 min median</span></span>
+      <span class="stat"><span class="k">Requests routed</span><span class="v num">184,203</span></span>
+      <span class="stat"><span class="k">Anomalies caught</span><span class="v num">312</span></span>
+      <span class="stat"><span class="k">Approval turnaround</span><span class="v num">6 min median</span></span>
+      <span class="stat"><span class="k">Requests routed</span><span class="v num">184,203</span></span>
+      <span class="stat"><span class="k">Anomalies caught</span><span class="v num">312</span></span>
+      <span class="stat"><span class="k">Approval turnaround</span><span class="v num">6 min median</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ LIVE CONSOLE ═══════════ -->
+<section class="sec console-band" id="console">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <span class="eyebrow">The gateway</span>
+      <h2 class="h2">One endpoint. Every provider. <span class="em">Governed.</span></h2>
+      <p class="lead">Point your OpenAI client at Spillway. Every request is metered, judged, and routed live.</p>
+    </div>
+    <p class="sr-only">Live demo: requests typed into the gateway are scored, routed to the cheapest capable model, and blocked with a 402 when a budget would be exceeded.</p>
+    <div class="console-shot rv rv-d1 wipe">
+      <div class="frame">
+        <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span class="addr">api.spillway.dev / v1 / chat / completions</span><span class="live-dot"><i></i>live</span></div>
+        <div class="console-ui">
+          <div class="console-left">
+            <span class="eyebrow">Incoming request</span>
+            <div class="cfield">
+              <span class="k">Prompt</span>
+              <div class="cprompt"><span id="typed"></span><span class="caret" id="caret"></span></div>
+            </div>
+            <div class="cmeta">
+              <span class="m"><span class="k">Tokens</span><span class="v" id="tokv">0</span></span>
+              <span class="m"><span class="k">Classifier</span><span class="v">2.1 ms</span></span>
+              <span class="m"><span class="k">Policy</span><span class="v">balanced</span></span>
+            </div>
+            <button class="try-own" id="tryOwn" type="button">▸ type your own request</button>
+          </div>
+          <div class="console-right">
+            <div>
+              <span class="k" style="font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mut)">Tier probability</span>
+              <div class="tierbar" style="margin-top:10px" aria-hidden="true"><i class="t-cheap" id="tC"></i><i class="t-mid" id="tM"></i><i class="t-prem" id="tP"></i></div>
+              <div class="tierlegend"><span id="lC">cheap</span><span id="lM">mid</span><span id="lP">premium</span></div>
+            </div>
+            <div class="decision" id="decision">
+              <span class="k">Routed to</span>
+              <div class="model" id="dModel">···</div>
+              <div class="row"><span id="dCost">···</span><span id="dLat">···</span><span class="save" id="dSave">···</span></div>
+              <div class="verdict" id="dVerdict">awaiting request</div>
+            </div>
+          </div>
+          <div class="console-result"><span class="live-dot" aria-hidden="true"><i></i>live</span><span class="rslt" id="rsltBar">ROUTED → gpt-4.1-mini · $0.0021 · 340 ms · −63% vs premium · logged ✓</span></div>
+        </div>
+      </div>
+    </div>
+    <p class="providers rv rv-d2">openai · anthropic · google · azure openai · bedrock · mistral · cohere · vllm · ollama · any openai-compatible</p>
+  </div>
+</section>
+
+<!-- ═══════════ SETUP ═══════════ -->
+<section class="sec" id="setup">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <span class="eyebrow">The setup</span>
+      <h2 class="h2">This is the <span class="em">whole</span> migration.</h2>
+    </div>
+    <div class="setup-shot rv rv-d1 wipe">
+      <div class="frame">
+        <div class="frame-bar"><span class="addr">client.py · diff</span></div>
+        <div class="diff" aria-label="Two-line code change: point the base URL and API key at Spillway">
+          <div class="dline"><span class="sign">&nbsp;</span><code>client = OpenAI(</code></div>
+          <div class="dline del"><span class="sign">−</span><code>&nbsp;&nbsp;base_url="https://api.openai.com/v1",</code></div>
+          <div class="dline add"><span class="sign">+</span><code>&nbsp;&nbsp;base_url="https://api.spillway.dev/v1",</code></div>
+          <div class="dline del"><span class="sign">−</span><code>&nbsp;&nbsp;api_key=OPENAI_KEY,</code></div>
+          <div class="dline add"><span class="sign">+</span><code>&nbsp;&nbsp;api_key=SPILLWAY_KEY,</code></div>
+          <div class="dline"><span class="sign">&nbsp;</span><code>)</code></div>
+        </div>
+      </div>
+      <p class="setup-note small rv rv-d2">Same SDK, same payloads, same streaming. Every request is now metered, judged, and governed.</p>
+      <p class="setup-cta rv rv-d2" style="text-align:center;margin-top:14px"><a class="mlink" href="#product">See what it governs →</a></p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<section class="sec" id="how" style="padding-bottom:clamp(48px,7vw,88px)">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <span class="eyebrow">The shape of it</span>
+      <h2 class="h2">Your app never <span class="em">knows</span> it's being governed.</h2>
+      <p class="lead" style="font-family:var(--mono);font-size:13px;letter-spacing:0.04em;margin-top:14px">budgets · approvals · anomaly · routing · each one before the provider sees the request</p>
+      <p class="lead" style="font-family:var(--mono);font-size:12px;letter-spacing:0.04em;margin-top:10px;color:var(--pass)">availability is a policy too: fail-open by default so an outage never blocks traffic — fail-closed per key where the budget matters more</p>
+    </div>
+    <div class="diagram rv rv-d1 wipe" id="diagram">
+      <svg viewBox="0 0 900 340" fill="none" aria-label="Architecture: your app connects to Spillway's one endpoint, which governs and routes to every provider">
+        <defs>
+          <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#0066cc"/></marker>
+          <marker id="arrA" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4L0 8z" fill="#E8930C"/></marker>
+        </defs>
+        <rect x="20" y="130" width="170" height="80" rx="12" fill="#fff" stroke="rgba(11,18,32,0.1)"/>
+        <text x="105" y="164" text-anchor="middle" font-family="-apple-system,system-ui" font-size="15" font-weight="600" fill="#0B1220">Your app</text>
+        <text x="105" y="186" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="#5A6478">openai sdk · unchanged</text>
+        <path class="flow" d="M190 170 H 320" stroke="#0066cc" stroke-width="1.5" marker-end="url(#arr)"/>
+        <rect x="330" y="70" width="240" height="200" rx="14" fill="#fff" stroke="#0066cc" stroke-width="1.5"/>
+        <circle cx="366" cy="104" r="7" fill="#0066cc"/>
+        <text x="382" y="109" font-family="-apple-system,system-ui" font-size="16" font-weight="600" fill="#0B1220">Spillway</text>
+        <text x="366" y="132" font-family="JetBrains Mono,monospace" font-size="9.5" letter-spacing="1.5" fill="#5A6478">ONE ENDPOINT · /v1</text>
+        <g font-family="JetBrains Mono,monospace" font-size="10.5" fill="#0B1220">
+          <rect x="352" y="150" width="92" height="26" rx="13" fill="rgba(0,102,204,0.06)" stroke="rgba(0,102,204,0.25)"/><text x="398" y="167" text-anchor="middle">Budgets</text>
+          <rect x="456" y="150" width="98" height="26" rx="13" fill="rgba(0,102,204,0.06)" stroke="rgba(0,102,204,0.25)"/><text x="505" y="167" text-anchor="middle">Approvals</text>
+          <rect x="352" y="186" width="92" height="26" rx="13" fill="rgba(0,102,204,0.06)" stroke="rgba(0,102,204,0.25)"/><text x="398" y="203" text-anchor="middle">Anomaly</text>
+          <rect x="456" y="186" width="98" height="26" rx="13" fill="rgba(0,102,204,0.06)" stroke="rgba(0,102,204,0.25)"/><text x="505" y="203" text-anchor="middle">Routing</text>
+        </g>
+        <text x="366" y="246" font-family="JetBrains Mono,monospace" font-size="9.5" fill="#5A6478">metered · judged · logged</text>
+        <path class="flow" d="M570 130 C 640 130, 650 100, 708 100" stroke="#0066cc" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path class="flow" d="M570 170 H 708" stroke="#0066cc" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path class="flow" d="M570 210 C 640 210, 650 240, 708 240" stroke="#0066cc" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path class="flow amber" d="M330 230 C 290 230, 270 260, 268 292" stroke="#E8930C" stroke-width="1.5" stroke-dasharray="4 4" marker-end="url(#arrA)"/>
+        <text x="284" y="316" font-family="JetBrains Mono,monospace" font-size="9.5" letter-spacing="1" fill="#B87908">BLOCKED · 402 · $0 SPENT</text>
+        <g font-family="JetBrains Mono,monospace" font-size="11.5" fill="#0B1220">
+          <rect x="712" y="80" width="168" height="40" rx="10" fill="#fff" stroke="rgba(11,18,32,0.1)"/><text x="796" y="104" text-anchor="middle">openai</text>
+          <rect x="712" y="150" width="168" height="40" rx="10" fill="#fff" stroke="rgba(11,18,32,0.1)"/><text x="796" y="174" text-anchor="middle">anthropic</text>
+          <rect x="712" y="220" width="168" height="40" rx="10" fill="#fff" stroke="rgba(11,18,32,0.1)"/><text x="796" y="244" text-anchor="middle">google · +compat</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ GOVERNANCE NARRATIVE ═══════════ -->
+<section class="sec" id="product">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">The governance layer</span>
+      <h2 class="h2">Four ways the plane says <span class="em">no</span>. Or yes.</h2>
+      <p class="lead">Observability tells you what happened. Spillway decides what happens next.</p>
+    </div>
+
+    <div class="acts">
+
+      <!-- 01 budgets -->
+      <div class="act rv" id="actBudgets">
+        <div class="act-copy">
+          <span class="eyebrow">01 / 04 · BUDGETS</span>
+          <h3 class="h2">Budgets that block, not dashboards that mention.</h3>
+          <p class="lead">Limits cascade org → team → key and are enforced at the gateway. The 402 happens before the spend, not after the invoice.</p>
+        </div>
+        <div class="act-visual rv rv-d2 wipe">
+          <div class="frame">
+            <div class="frame-bar"><i></i><i></i><i></i><span class="addr">spend limits · june</span></div>
+            <div class="gov-meters">
+              <div class="gmeter" style="--w:41%"><span class="k">org · acme</span><span class="track"><i class="fill"></i></span><span class="v">$8.2k / $20k</span></div>
+              <div class="gmeter" style="--w:63%"><span class="k">team · platform</span><span class="track"><i class="fill"></i></span><span class="v">$3.1k / $5k</span></div>
+              <div class="gmeter hot" style="--w:97%"><span class="k">key · batch-embed</span><span class="track"><i class="fill"></i></span><span class="v">$970 / $1k</span></div>
+            </div>
+            <div class="block-toast"><span class="dot"></span><span class="t"><b>Blocked · 402 budget_exceeded</b> · batch-embed hit its daily cap. Nothing was spent.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 02 approvals -->
+      <div class="act rv" id="actApprovals">
+        <div class="act-copy">
+          <span class="eyebrow">02 / 04 · APPROVALS</span>
+          <h3 class="h2">Spend that needs a human gets one.</h3>
+          <p class="lead">Threshold-triggered approval chains with quorums, delegation, and expiry. Resolved from Slack or a signed link, recorded in the audit log.</p>
+        </div>
+        <div class="act-visual rv rv-d2 wipe">
+          <div class="frame">
+            <div class="frame-bar"><i></i><i></i><i></i><span class="addr">approvals · #ai-spend</span></div>
+            <div class="approval">
+              <div class="ap-row">
+                <span class="avatar">M</span>
+                <div>
+                  <div class="bubble">Budget increase requested: <b>batch-embed +$500/day</b><div class="meta">requested by dev-platform · policy: governance-tier</div></div>
+                </div>
+              </div>
+              <div class="ap-actions"><span class="chip approve" id="apApprove">✓ Approve</span><span class="chip">Deny</span><span class="chip">Delegate</span></div>
+              <div class="ap-state" id="apState">pending · 1 of 1 required</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 03 anomaly -->
+      <div class="act rv" id="actAnomaly">
+        <div class="act-copy">
+          <span class="eyebrow">03 / 04 · ANOMALIES</span>
+          <h3 class="h2">It sees the spike before the invoice does.</h3>
+          <p class="lead">Weekday-aware baselines per org, team, and key. A run-rate that breaks trend fires an alert and can pause the key by itself.</p>
+        </div>
+        <div class="act-visual rv rv-d2 wipe">
+          <div class="frame">
+            <div class="frame-bar"><i></i><i></i><i></i><span class="addr">alerts · live</span></div>
+            <div class="alog" id="alog" aria-hidden="true">
+              <div class="lrow"><span class="sev">PASS</span><span class="msg">key prod-chat within baseline</span><span>09:41:22</span></div>
+              <div class="lrow warn"><span class="sev">WARN</span><span class="msg">batch-embed at 4.2× weekday baseline</span><span>09:41:07</span></div>
+              <div class="lrow"><span class="sev">PASS</span><span class="msg">team platform run-rate normal</span><span>09:40:58</span></div>
+              <div class="lrow warn"><span class="sev">ACT</span><span class="msg">auto-suspend armed · batch-embed</span><span>09:40:41</span></div>
+              <div class="lrow"><span class="sev">PASS</span><span class="msg">org daily forecast within budget</span><span>09:40:12</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 04 routing -->
+      <div class="act rv" id="actRouting">
+        <div class="act-copy">
+          <span class="eyebrow">04 / 04 · ROUTING</span>
+          <h3 class="h2">Every route logged, priced, and replayable.</h3>
+          <p class="lead">Policy-driven routing with health-aware fallbacks and a quality floor you set. Every decision is logged, replayable, and priced to the token.</p>
+        </div>
+        <div class="act-visual rv rv-d2 wipe">
+          <div class="frame">
+            <div class="frame-bar"><i></i><i></i><i></i><span class="addr">route ledger · live</span><span class="live-dot"><i></i>live</span></div>
+            <div class="ledger" id="ledger" aria-hidden="true">
+              <div class="row"><span class="task">classify support ticket</span><span class="model">haiku</span><span class="delta num">−92%</span></div>
+              <div class="row"><span class="task">refactor payment hook</span><span class="model">4.1-mini</span><span class="delta num">−72%</span></div>
+              <div class="row"><span class="task">summarize vendor doc</span><span class="model">flash-lite</span><span class="delta num">−88%</span></div>
+              <div class="row"><span class="task">analyze 10-K filing</span><span class="model">gemini-pro</span><span class="delta num">−44%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ═══════════ STAT BAND ═══════════ -->
+<section class="sec">
+  <div class="wrap">
+    <div class="head-row rv">
+      <div class="sec-head">
+        <span class="eyebrow">At the gateway</span>
+        <h2 class="h2">Enforcement, <span class="em">live</span> from the demo gateway.</h2>
+      </div>
+      <p class="head-meta">figures from the demo environment<br />early access · your traffic will differ</p>
+    </div>
+    <div class="stats">
+      <div class="stat-big rv"><div class="v num" data-count="1204" data-prefix="$">$0</div><div class="k">blocked before spend · June</div></div>
+      <div class="stat-big rv rv-d1"><div class="v num" data-count="18" data-prefix="+" data-suffix=" ms">+0 ms</div><div class="k">p50 gateway overhead · provider time excluded</div></div>
+      <div class="stat-big rv rv-d2"><div class="v num" data-count="100" data-suffix="+">0</div><div class="k">models behind one endpoint</div></div>
+    </div>
+    <div class="trust-strip rv rv-d2">
+      <span class="t"><i></i>Every decision logged &amp; replayable</span>
+      <span class="t"><i></i>Chargeback reconciled to the cent</span>
+      <span class="t"><i></i>Provider keys AES-256 sealed</span>
+      <span class="t"><i></i>Row-level tenant isolation</span>
+      <span class="t"><i></i>Zero body retention by default</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ PRICING ═══════════ -->
+<section class="sec" id="pricing">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <span class="eyebrow">Pricing</span>
+      <h2 class="h2">Free to start. <span class="em">Never</span> a percent of your spend.</h2>
+      <p class="lead" style="font-family:var(--mono);font-size:12px;letter-spacing:0.04em;margin-top:14px">flat monthly fee at every tier — a 10&times; spend month costs you $0 more</p>
+    </div>
+    <div class="plans">
+      <div class="plan card rv">
+        <span class="nm">Free</span>
+        <div class="price">$0<span> / mo</span></div>
+        <ul><li>One endpoint, every model</li><li>Budgets &amp; spend alerts</li><li>7-day request history</li></ul>
+        <a class="btn btn-ghost" href="#cta">Start free</a>
+      </div>
+      <div class="plan card rv rv-d1">
+        <span class="nm">Pro</span>
+        <div class="price">$49<span> / mo</span></div>
+        <ul><li>Routing policies &amp; guardrails</li><li>Anomaly detection</li><li>90-day history &amp; traces</li></ul>
+        <a class="btn btn-ghost" href="#cta">Start trial</a>
+      </div>
+      <div class="plan card featured rv rv-d2">
+        <span class="nm">Governance</span>
+        <div class="price">$299<span> / mo</span></div>
+        <ul><li>Approval workflows &amp; delegation</li><li>Hard budget enforcement</li><li>Chargeback &amp; audit exports</li></ul>
+        <a class="btn btn-primary" href="#cta">Start trial</a>
+      </div>
+      <div class="plan card rv rv-d3">
+        <span class="nm">Enterprise</span>
+        <div class="price">Custom</div>
+        <ul><li>In-region &amp; on-prem</li><li>SSO / SAML &amp; SCIM</li><li>SLA &amp; solutions engineering</li></ul>
+        <a class="btn btn-ghost" href="#cta">Talk to us</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FAQ ═══════════ -->
+<section class="sec" id="faq" style="padding-top:0">
+  <div class="wrap">
+    <div class="sec-head center rv">
+      <span class="eyebrow">Objections, answered</span>
+      <h2 class="h2">The questions every proxy buyer <span class="em">asks</span>.</h2>
+    </div>
+    <div class="faq rv rv-d1">
+      <details name="faq">
+        <summary>What happens if Spillway goes down?</summary>
+        <p>Requests fail open: if the gateway is ever unreachable, your client can fall back to the provider directly and your product keeps working. We sit in the path to govern spend, not to hold your traffic hostage.</p>
+      </details>
+      <details name="faq">
+        <summary>Do you store my prompts and responses?</summary>
+        <p>Not by default. Request and response bodies are dropped after the decision; metadata (tokens, cost, route, verdict) is what we keep. Body retention is explicit opt-in, per org, with a retention window you control.</p>
+      </details>
+      <details name="faq">
+        <summary>Does streaming and tool-calling still work?</summary>
+        <p>Yes. SSE streams, function calling, JSON mode, and vision payloads pass through untouched. The policy check happens before the request leaves the gateway; after that, bytes flow straight through.</p>
+      </details>
+      <details name="faq">
+        <summary>Which providers are behind the endpoint?</summary>
+        <p>OpenAI, Anthropic, Google, Azure OpenAI, Bedrock, Mistral, and Cohere, plus anything OpenAI-compatible: vLLM, Ollama, TGI, or your own gateway. One key, one bill, one policy layer.</p>
+      </details>
+      <details name="faq">
+        <summary>Can we run it in our region, or on-prem?</summary>
+        <p>The Enterprise tier ships in-region and on-prem deployments with SSO/SAML, SCIM, and an SLA. The policy engine is the same one the cloud runs.</p>
+      </details>
+      <details name="faq">
+        <summary>Why not just use each provider's spend limits?</summary>
+        <p>Per-provider caps are monthly, coarse, and post-hoc; they cannot cascade org → team → key, cannot require an approval, and cannot see your other providers. A control plane enforces one policy across all of them, before the spend.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ BOOKEND CTA ═══════════ -->
+<section class="bookend" id="cta">
+  <div class="hero-field" id="field2" aria-hidden="true"></div>
+  <div class="wrap">
+    <h2 class="h2 rv">Put a control plane in <span class="em">front</span> of your AI spend.</h2>
+    <form class="capture rv rv-d1" onsubmit="return false">
+      <input type="email" placeholder="What's your work email?" aria-label="Work email" />
+      <button class="btn btn-primary" type="submit">Start free</button>
+    </form>
+    <p class="small rv rv-d2" style="margin-top:16px">No credit card · OpenAI-compatible · 5-minute setup</p>
+  </div>
+</section>
+
+</main>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer class="footer">
+  <span class="watermark" aria-hidden="true">Spillway</span>
+  <div class="wrap">
+    <div class="footer-cols">
+      <div class="brand">
+        <span class="logo"><i></i>SPILLWAY</span>
+        <p>The control plane where AI spend is governed, not just observed.</p>
+      </div>
+      <div><h4>Product</h4><ul><li><a href="#product">Governance</a></li><li><a href="#console">Console</a></li><li><a href="#pricing">Pricing</a></li><li><a href="#">Changelog</a></li></ul></div>
+      <div><h4>Developers</h4><ul><li><a href="#">Documentation</a></li><li><a href="#">API reference</a></li><li><a href="#">Status</a></li><li><a href="#">OpenAPI spec</a></li></ul></div>
+      <div><h4>Company</h4><ul><li><a href="#">About</a></li><li><a href="#">Blog</a></li><li><a href="#">Careers</a></li><li><a href="#">Contact</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="#">Privacy</a></li><li><a href="#">Terms</a></li><li><a href="#">Security</a></li><li><a href="#">DPA</a></li></ul></div>
+    </div>
+    <div class="footer-legal">
+      <span>© 2026 Spillway Labs, Inc. · Early access, running with design partners</span>
+      <span>SOC 2 in progress · fail-open by design: zero added downtime risk</span>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="chart.js"></script>
+<script src="app.js" defer></script>
+</body>
+</html>

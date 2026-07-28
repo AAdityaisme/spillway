@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spillway API · API reference</title>
+<style>
+  :root { --bg:#0c0d10; --panel:#141519; --ink:#e7e7ea; --mut:#9a9ba2; --line:#24262c; --acc:#e8a33d; }
+  * { box-sizing:border-box; } html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.6 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+  code,.m,.path,.ft,.fn { font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; }
+  .wrap { display:grid; grid-template-columns:220px 1fr; max-width:1080px; margin:0 auto; }
+  nav { position:sticky; top:0; align-self:start; height:100vh; overflow:auto; padding:28px 16px; border-right:1px solid var(--line); }
+  nav .brand { font-weight:600; letter-spacing:.02em; margin-bottom:4px; }
+  nav .ver { color:var(--mut); font-size:12px; margin-bottom:18px; }
+  nav a { display:block; color:var(--mut); text-decoration:none; padding:4px 0; font-size:13px; }
+  nav a:hover { color:var(--acc); }
+  main { padding:28px 32px; min-width:0; }
+  h1 { font-size:22px; margin:0 0 6px; } .lede { color:var(--mut); margin:0 0 28px; max-width:60ch; }
+  h2 { font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--acc); border-bottom:1px solid var(--line); padding-bottom:8px; margin:36px 0 14px; }
+  .op { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px 18px; margin:12px 0; }
+  .opline { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .m { font-size:11px; font-weight:700; padding:3px 8px; border-radius:5px; letter-spacing:.05em; }
+  .m-get{background:#12341f;color:#5fd18b} .m-post{background:#123047;color:#5aa9e0}
+  .m-patch{background:#3a2e12;color:#e8c25f} .m-delete{background:#3a1616;color:#e07a7a}
+  .path { font-size:13.5px; } .summary { margin:10px 0 0; color:var(--ink); }
+  .auth { color:var(--mut); font-size:12px; margin-top:8px; } .auth::before{content:"🔒 ";}
+  .sub { text-transform:uppercase; font-size:11px; letter-spacing:.07em; color:var(--mut); margin:14px 0 6px; }
+  .params { list-style:none; margin:0; padding:0; } .params li { padding:2px 0; }
+  .pin { color:var(--mut); font-size:11px; margin-left:6px; }
+  table.fields { width:100%; border-collapse:collapse; font-size:13px; }
+  .fields th { text-align:left; color:var(--mut); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--line); padding:4px 8px; }
+  .fields td { padding:5px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .fn { color:var(--ink); } .ft { color:var(--acc); } .fd { color:var(--mut); }
+  .req { color:#e07a7a; margin-left:2px; }
+  .foot { color:var(--mut); font-size:12px; margin-top:40px; border-top:1px solid var(--line); padding-top:16px; }
+  a { color:var(--acc); }
+  @media (max-width:760px){ .wrap{grid-template-columns:1fr} nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line)} }
+</style></head>
+<body><div class="wrap">
+<nav><div class="brand">Spillway API</div><div class="ver">v1.0.0</div><a href="#tag-Gateway">Gateway</a><a href="#tag-Orgs">Orgs</a><a href="#tag-Members">Members</a><a href="#tag-Teams">Teams</a><a href="#tag-Provider-keys">Provider keys</a><a href="#tag-Virtual-keys">Virtual keys</a><a href="#tag-Admin-keys">Admin keys</a><a href="#tag-Budgets">Budgets</a><a href="#tag-Routing">Routing</a><a href="#tag-Guardrails">Guardrails</a><a href="#tag-Alerts">Alerts</a><a href="#tag-Approvals">Approvals</a><a href="#tag-Automation">Automation</a><a href="#tag-Reporting">Reporting</a></nav>
+<main>
+  <h1>Spillway API — API reference</h1>
+  <p class="lede">The control plane for AI spend. One OpenAI-compatible gateway (`/v1/*`) plus a governance and administration API (`/api/*`). Request bodies are generated from the zod schemas in `@spillway/shared` — the single source of truth.</p>
+  <section id="tag-Gateway"><h2>Gateway</h2><div class="op" id="post/v1/chat/completions">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/v1/chat/completions</code></div>
+    <p class="summary">OpenAI-compatible chat completion (streaming when `stream:true`).</p>
+    <div class="auth">auth: virtualKey</div>
+    
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">model<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">messages<span class="req">*</span></td><td class="ft">object[]</td><td class="fd"></td></tr><tr><td class="fn">stream</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">max_tokens</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">max_completion_tokens</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">metadata</td><td class="ft">object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="post/v1/messages">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/v1/messages</code></div>
+    <p class="summary">Anthropic-compatible messages endpoint.</p>
+    <div class="auth">auth: virtualKey</div>
+    
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">model<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">messages<span class="req">*</span></td><td class="ft">object[]</td><td class="fd"></td></tr><tr><td class="fn">max_tokens<span class="req">*</span></td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">stream</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="get/v1/models">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/v1/models</code></div>
+    <p class="summary">Merged model catalogue (org providers + aliases).</p>
+    <div class="auth">auth: virtualKey</div>
+    
+    
+  </div></section><section id="tag-Orgs"><h2>Orgs</h2><div class="op" id="get/api/orgs">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/orgs</code></div>
+    <p class="summary">List orgs the caller belongs to.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/orgs">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/orgs</code></div>
+    <p class="summary">Create an org.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">slug<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="get/api/org">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/org</code></div>
+    <p class="summary">Get the active org.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="patch/api/org">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/org</code></div>
+    <p class="summary">Update the active org (settings, data policy).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">bodyLoggingEnabled</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">bodyRetentionDays</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">metadataRetentionDays</td><td class="ft">integer</td><td class="fd"></td></tr></tbody></table>
+  </div></section><section id="tag-Members"><h2>Members</h2><div class="op" id="get/api/members">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/members</code></div>
+    <p class="summary">List members.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/members">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/members</code></div>
+    <p class="summary">Invite a member by email.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">userId<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">role<span class="req">*</span></td><td class="ft">&quot;owner&quot; | &quot;admin&quot; | &quot;member&quot; | &quot;viewer&quot;</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/members/{userId}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/members/{userId}</code></div>
+    <p class="summary">Change a member's role.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>userId</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">role<span class="req">*</span></td><td class="ft">&quot;owner&quot; | &quot;admin&quot; | &quot;member&quot; | &quot;viewer&quot;</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/members/{userId}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/members/{userId}</code></div>
+    <p class="summary">Remove a member (≥1 owner invariant enforced).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>userId</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Teams"><h2>Teams</h2><div class="op" id="get/api/teams">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/teams</code></div>
+    <p class="summary">List teams.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/teams">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/teams</code></div>
+    <p class="summary">Create a team.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">slug<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/teams/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/teams/{id}</code></div>
+    <p class="summary">Update a team.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">slug</td><td class="ft">string</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/teams/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/teams/{id}</code></div>
+    <p class="summary">Delete a team.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Provider-keys"><h2>Provider keys</h2><div class="op" id="get/api/provider-keys">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/provider-keys</code></div>
+    <p class="summary">List provider keys (metadata only; ciphertext never returned).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/provider-keys">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/provider-keys</code></div>
+    <p class="summary">Add a provider key (sealed AES-256-GCM).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">provider<span class="req">*</span></td><td class="ft">&quot;openai&quot;</td><td class="fd"></td></tr><tr><td class="fn">label<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">apiKey<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/provider-keys/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/provider-keys/{id}</code></div>
+    <p class="summary">Delete a provider key.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Virtual-keys"><h2>Virtual keys</h2><div class="op" id="get/api/virtual-keys">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/virtual-keys</code></div>
+    <p class="summary">List virtual keys.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/virtual-keys">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/virtual-keys</code></div>
+    <p class="summary">Mint a virtual key (plaintext returned ONCE).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">teamId</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">allowedProviders</td><td class="ft">&quot;openai&quot;[]</td><td class="fd"></td></tr><tr><td class="fn">allowedModels</td><td class="ft">string[]</td><td class="fd"></td></tr><tr><td class="fn">rpmLimit</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">tpmLimit</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">maxInputTokens</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">maxOutputTokens</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">expiresAt</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">metadata</td><td class="ft">object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/virtual-keys/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/virtual-keys/{id}</code></div>
+    <p class="summary">Update a virtual key (pause/revoke/limits).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">status<span class="req">*</span></td><td class="ft">&quot;active&quot; | &quot;paused&quot; | &quot;revoked&quot;</td><td class="fd"></td></tr></tbody></table>
+  </div></section><section id="tag-Admin-keys"><h2>Admin keys</h2><div class="op" id="get/api/admin-api-keys">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/admin-api-keys</code></div>
+    <p class="summary">List admin API keys.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/admin-api-keys">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/admin-api-keys</code></div>
+    <p class="summary">Mint an admin API key (plaintext returned ONCE).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">role</td><td class="ft">&quot;admin&quot; | &quot;viewer&quot;</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/admin-api-keys/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/admin-api-keys/{id}</code></div>
+    <p class="summary">Update an admin API key (revoke).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">status<span class="req">*</span></td><td class="ft">&quot;active&quot; | &quot;revoked&quot;</td><td class="fd"></td></tr></tbody></table>
+  </div></section><section id="tag-Budgets"><h2>Budgets</h2><div class="op" id="get/api/budgets">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/budgets</code></div>
+    <p class="summary">List budgets.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/budgets">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/budgets</code></div>
+    <p class="summary">Create a budget.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">scopeType<span class="req">*</span></td><td class="ft">&quot;org&quot; | &quot;team&quot; | &quot;virtual_key&quot; | &quot;provider&quot;</td><td class="fd"></td></tr><tr><td class="fn">scopeId<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">period<span class="req">*</span></td><td class="ft">&quot;day&quot; | &quot;month&quot; | &quot;rolling_30d&quot;</td><td class="fd"></td></tr><tr><td class="fn">limitUsd<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">mode</td><td class="ft">&quot;enforce&quot; | &quot;alert&quot; | &quot;monitor&quot;</td><td class="fd"></td></tr><tr><td class="fn">onExceed</td><td class="ft">&quot;block&quot; | &quot;fallback&quot;</td><td class="fd"></td></tr><tr><td class="fn">fallbackAlias</td><td class="ft">string,null</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/budgets/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/budgets/{id}</code></div>
+    <p class="summary">Update a budget.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">limitUsd</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">mode</td><td class="ft">&quot;enforce&quot; | &quot;alert&quot; | &quot;monitor&quot;</td><td class="fd"></td></tr><tr><td class="fn">onExceed</td><td class="ft">&quot;block&quot; | &quot;fallback&quot;</td><td class="fd"></td></tr><tr><td class="fn">fallbackAlias</td><td class="ft">string,null</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/budgets/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/budgets/{id}</code></div>
+    <p class="summary">Delete a budget.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Routing"><h2>Routing</h2><div class="op" id="get/api/aliases">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/aliases</code></div>
+    <p class="summary">List model aliases.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/aliases">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/aliases</code></div>
+    <p class="summary">Create a model alias.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">alias<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">targets<span class="req">*</span></td><td class="ft">object[] | object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/aliases/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/aliases/{id}</code></div>
+    <p class="summary">Update a model alias.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">targets<span class="req">*</span></td><td class="ft">object[] | object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/aliases/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/aliases/{id}</code></div>
+    <p class="summary">Delete a model alias.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/routing-rules">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/routing-rules</code></div>
+    <p class="summary">List routing rules.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/routing-rules">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/routing-rules</code></div>
+    <p class="summary">Create a routing rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">priority<span class="req">*</span></td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">description</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">match<span class="req">*</span></td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">action<span class="req">*</span></td><td class="ft">object | object</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/routing-rules/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/routing-rules/{id}</code></div>
+    <p class="summary">Update a routing rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">priority</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">description</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">match</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">action</td><td class="ft">object | object</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/routing-rules/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/routing-rules/{id}</code></div>
+    <p class="summary">Delete a routing rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Guardrails"><h2>Guardrails</h2><div class="op" id="get/api/policies">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/policies</code></div>
+    <p class="summary">List guardrail policies.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/policies">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/policies</code></div>
+    <p class="summary">Create a guardrail policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">description</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">effect<span class="req">*</span></td><td class="ft">&quot;deny&quot; | &quot;require_approval&quot; | &quot;flag&quot;</td><td class="fd"></td></tr><tr><td class="fn">reason<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">match</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">conditionCel</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">enforcement</td><td class="ft">&quot;shadow&quot; | &quot;enforce&quot;</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">effectConfig</td><td class="ft">object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/policies/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/policies/{id}</code></div>
+    <p class="summary">Update a guardrail policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">description</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">effect</td><td class="ft">&quot;deny&quot; | &quot;require_approval&quot; | &quot;flag&quot;</td><td class="fd"></td></tr><tr><td class="fn">reason</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">match</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">conditionCel</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">enforcement</td><td class="ft">&quot;shadow&quot; | &quot;enforce&quot;</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">effectConfig</td><td class="ft">object</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/policies/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/policies/{id}</code></div>
+    <p class="summary">Delete a guardrail policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/policies/{id}/shadow-impact">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/policies/{id}/shadow-impact</code></div>
+    <p class="summary">Shadow-impact aggregate — &quot;would have denied N requests / blocked $X&quot; (16 §8.2).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/policies/lint">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/policies/lint</code></div>
+    <p class="summary">Lint the effective routing rules + guardrail policies (16 §9.1 L1/L2/L5).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/decision-logs">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/decision-logs</code></div>
+    <p class="summary">Query the policy decision log (effect/policy/time filters).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/decision-logs/{id}">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/decision-logs/{id}</code></div>
+    <p class="summary">Get a single decision-log record (the &quot;why was this denied&quot; drill-down).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Alerts"><h2>Alerts</h2><div class="op" id="get/api/alerts">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/alerts</code></div>
+    <p class="summary">List alerts.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/alerts">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/alerts</code></div>
+    <p class="summary">Create an alert.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">kind<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">scopeType</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">scopeId</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">config</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">channels</td><td class="ft">object[]</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/alerts/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/alerts/{id}</code></div>
+    <p class="summary">Update an alert.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">config</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">channels</td><td class="ft">object[]</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/alerts/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/alerts/{id}</code></div>
+    <p class="summary">Delete an alert.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Approvals"><h2>Approvals</h2><div class="op" id="get/api/approvals">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/approvals</code></div>
+    <p class="summary">List approval requests.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/approvals">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/approvals</code></div>
+    <p class="summary">Open a human-initiated approval request (budget increase / key unpause).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/approvals/{id}">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/approvals/{id}</code></div>
+    <p class="summary">Get an approval request.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/approvals/{id}/decisions">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/approvals/{id}/decisions</code></div>
+    <p class="summary">Cast an approve/reject decision.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/approvals/{id}/cancel">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/approvals/{id}/cancel</code></div>
+    <p class="summary">Cancel an approval request.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/approval-policies">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/approval-policies</code></div>
+    <p class="summary">List approval policies.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/approval-policies">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/approval-policies</code></div>
+    <p class="summary">Create an approval policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">kind<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">scopeType</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">scopeId</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">definition<span class="req">*</span></td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="patch/api/approval-policies/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/approval-policies/{id}</code></div>
+    <p class="summary">Update an approval policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">definition</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">enabled</td><td class="ft">boolean</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/approval-policies/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/approval-policies/{id}</code></div>
+    <p class="summary">Delete an approval policy.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/delegations">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/delegations</code></div>
+    <p class="summary">List approval delegations.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/delegations">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/delegations</code></div>
+    <p class="summary">Create an approval delegation.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">fromUser<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">toUser<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">startsAt<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">endsAt<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/delegations/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/delegations/{id}</code></div>
+    <p class="summary">Revoke an approval delegation.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Automation"><h2>Automation</h2><div class="op" id="get/api/automation-rules">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/automation-rules</code></div>
+    <p class="summary">List automation rules.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/automation-rules">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/automation-rules</code></div>
+    <p class="summary">Create an automation rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name<span class="req">*</span></td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">priority<span class="req">*</span></td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">triggerType<span class="req">*</span></td><td class="ft">&quot;alert_fired&quot; | &quot;approval_decided&quot; | &quot;key_created&quot; | &quot;budget_crossed&quot; | &quot;schedule_cron&quot;</td><td class="fd"></td></tr><tr><td class="fn">condition</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">action<span class="req">*</span></td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">state</td><td class="ft">&quot;active&quot; | &quot;notify_only&quot; | &quot;disabled&quot;</td><td class="fd"></td></tr><tr><td class="fn">stopOnMatch</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">rateCapPerHour</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">scheduleCron</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">notifyOnlyUntil</td><td class="ft">string,null</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="post/api/automation-rules/reorder">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/automation-rules/reorder</code></div>
+    <p class="summary">Reorder automation-rule priority.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="patch/api/automation-rules/{id}">
+    <div class="opline"><span class="m m-patch">PATCH</span><code class="path">/api/automation-rules/{id}</code></div>
+    <p class="summary">Update an automation rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    <div class="sub">Request body</div><table class="fields"><thead><tr><th>field</th><th>type</th><th></th></tr></thead><tbody><tr><td class="fn">name</td><td class="ft">string</td><td class="fd"></td></tr><tr><td class="fn">priority</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">condition</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">action</td><td class="ft">object</td><td class="fd"></td></tr><tr><td class="fn">state</td><td class="ft">&quot;active&quot; | &quot;notify_only&quot; | &quot;disabled&quot;</td><td class="fd"></td></tr><tr><td class="fn">stopOnMatch</td><td class="ft">boolean</td><td class="fd"></td></tr><tr><td class="fn">rateCapPerHour</td><td class="ft">integer</td><td class="fd"></td></tr><tr><td class="fn">scheduleCron</td><td class="ft">string,null</td><td class="fd"></td></tr><tr><td class="fn">notifyOnlyUntil</td><td class="ft">string,null</td><td class="fd"></td></tr></tbody></table>
+  </div><div class="op" id="delete/api/automation-rules/{id}">
+    <div class="opline"><span class="m m-delete">DELETE</span><code class="path">/api/automation-rules/{id}</code></div>
+    <p class="summary">Delete an automation rule.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>id</code> <span class="pin">path</span><span class="req">*</span></li><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section><section id="tag-Reporting"><h2>Reporting</h2><div class="op" id="get/api/requests">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/requests</code></div>
+    <p class="summary">Query the request log.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/reports/chargeback">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/reports/chargeback</code></div>
+    <p class="summary">Monthly chargeback statement (per team/key/model).</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/reports/insights">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/reports/insights</code></div>
+    <p class="summary">Savings insights report.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="post/api/reports/insights/trigger">
+    <div class="opline"><span class="m m-post">POST</span><code class="path">/api/reports/insights/trigger</code></div>
+    <p class="summary">Trigger an on-demand insights run.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/kpi/overview">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/kpi/overview</code></div>
+    <p class="summary">Dashboard KPI overview.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/kpi/spend-timeseries">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/kpi/spend-timeseries</code></div>
+    <p class="summary">Spend time-series for the overview chart.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div><div class="op" id="get/api/kpi/model-mix">
+    <div class="opline"><span class="m m-get">GET</span><code class="path">/api/kpi/model-mix</code></div>
+    <p class="summary">Model-mix breakdown.</p>
+    <div class="auth">auth: sessionToken or adminKey</div>
+    <div class="sub">Parameters</div><ul class="params"><li><code>X-Spillway-Org</code> <span class="pin">header</span></li></ul>
+    
+  </div></section>
+  <div class="foot">Generated from the zod schemas by <code>pnpm build:openapi</code>. Machine-readable spec: <a href="./openapi.json">openapi.json</a>.</div>
+</main>
+</div></body></html>

@@ -1,0 +1,41 @@
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sec-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-scan:
+    # gitleaks runs BEFORE any install, so it scans only tracked repo files (no node_modules to walk).
+    # Blocks the build if a Spillway/cloud credential shape reaches the tree (10-security §6; M0 gate).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: gitleaks
+        run: |
+          VER=8.21.2
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks detect --source . --config .gitleaks.toml --no-git --redact --no-banner --exit-code 1
+
+  dep-scan:
+    # osv-scanner reads the pnpm lockfile against the OSV database (pnpm's own audit endpoint was
+    # retired — 410). Advisory (continue-on-error) so a transitive advisory surfaces in the logs
+    # without blocking merges; promote to blocking once the tree is triaged.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: osv-scanner
+        run: |
+          VER=1.9.2
+          curl -sSfL "https://github.com/google/osv-scanner/releases/download/v${VER}/osv-scanner_linux_amd64" -o osv-scanner
+          chmod +x osv-scanner
+          ./osv-scanner --lockfile=pnpm-lock.yaml

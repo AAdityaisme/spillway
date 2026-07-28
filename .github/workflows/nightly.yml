@@ -1,0 +1,61 @@
+name: nightly
+
+# part-3/06 layer-2 — model-certification LIVE smoke. Runs on a schedule (never on a PR), so real
+# provider calls + spend never gate a merge. Each provider is skipped unless its secret is configured,
+# so an unconfigured repo is a clean no-op. Results land in certifier_results; the /v1/models catalog
+# reads the last passing run within 72h ∩ DECLARED_CAPS.
+on:
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC, before the existing E2E job
+  workflow_dispatch: {}
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: model-certification live smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.3-alpine
+        env:
+          POSTGRES_USER: spillway
+          POSTGRES_PASSWORD: spillway
+          POSTGRES_DB: spillway_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      DATABASE_URL: postgres://spillway_app:spillway_app@localhost:5432/spillway_test
+      DATABASE_URL_JOBS: postgres://spillway_jobs:spillway_jobs@localhost:5432/spillway_test
+      MIGRATION_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      SPILLWAY_ENC_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      # Per-run spend cap (the smoke runner refuses to fire a call that would exceed it).
+      CERTIFIER_SPEND_CAP_USD: '0.10'
+      # Provider keys — configure these repo secrets to activate a provider; unset = that provider is skipped.
+      OPENAI_API_KEY: ${{ secrets.CERTIFIER_OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.CERTIFIER_ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.CERTIFIER_GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      - run: psql "$MIGRATION_DATABASE_URL" -f apps/server/src/db/migrations/init-roles.sql
+      - run: pnpm db:migrate
+      # Seed the live price table so smoke results carry a real reconciled cost.
+      - run: pnpm pricing:sync
+      # continue-on-error: a single flaky/overloaded provider must not fail certification for the others
+      # (each capability result is recorded regardless; the runner marks transient errors SKIPPED_TRANSIENT).
+      - run: pnpm certify:smoke
+        continue-on-error: true

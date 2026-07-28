@@ -1,0 +1,33 @@
+{
+  "name": "@spillway/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/apps/server/src/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@bufbuild/cel": "0.6.0",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/static": "^9.3.0",
+    "@spillway/certifier": "workspace:*",
+    "@spillway/pricing": "workspace:*",
+    "@spillway/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.2.0",
+    "jose": "^5.10.0",
+    "lru-cache": "^11.5.1",
+    "pino": "^9.6.0",
+    "postgres": "^3.4.5",
+    "prom-client": "^15.1.3",
+    "undici": "^7.28.0",
+    "uuid": "^14.0.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^10.16.0",
+    "@types/uuid": "^11.0.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}

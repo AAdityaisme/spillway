@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "packages/*/src/**/*.ts",
+    "apps/server/src/**/*.ts",
+    "apps/server/test/**/*.ts",
+    "tools/**/*.ts",
+    "drizzle.config.ts",
+    "vitest.workspace.ts"
+  ],
+  "exclude": ["**/node_modules", "**/dist", "apps/web"]
+}

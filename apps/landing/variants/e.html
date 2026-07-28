@@ -1,0 +1,1197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spillway — The control plane where AI spend is governed.</title>
+<meta name="description" content="Budgets that block, approvals that gate, anomaly alerts, and cost-aware routing — one endpoint in front of every model." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../spillway-home.css?v=17" />
+
+<style>
+/* the product carries the page: every visual sits in real browser chrome */
+.hero-scene{height:auto;margin-top:clamp(28px,4vh,48px)}
+.visual .vcard, .gov-card, .cost-card{position:relative;border-radius:0 0 14px 14px!important;margin-top:34px}
+.visual .vcard::before{content:'●\2002●\2002●';position:absolute;top:-30px;left:0;right:0;height:30px;border-radius:12px 12px 0 0;background:#e9e9ee;color:#c2c2c8;font-size:9px;line-height:30px;padding-left:14px;letter-spacing:2px;border:1px solid rgba(0,0,0,.06);border-bottom:0}
+.on-dark .visual .vcard::before{background:#232326;border-color:rgba(255,255,255,.09);color:#4a4a4f}
+.hero-shot{max-width:1080px;margin:0 auto;border-radius:14px;overflow:hidden;box-shadow:var(--shadow-float);border:1px solid rgba(0,0,0,.07)}
+.hero-shot-bar{display:flex;align-items:center;gap:8px;background:#e9e9ee;padding:9px 14px}
+.hero-shot-bar i{width:9px;height:9px;border-radius:50%;background:#cfcfd6}
+.hero-shot-bar .addr{margin-left:10px;font:500 11.5px/1 ui-monospace,Menlo,monospace;color:#6a6a70;background:#fff;border-radius:7px;padding:5px 12px}
+.hero-shot-body{display:grid;grid-template-columns:1.25fr 1fr;gap:0;background:#fafafc}
+.hero-shot-body>div{padding:22px;border-right:1px solid rgba(0,0,0,.05)}
+.hero-shot-body .vcard{max-width:none;box-shadow:none;border:1px solid rgba(0,0,0,.05)}
+@media(max-width:900px){.hero-shot-body{grid-template-columns:1fr}}
+</style>
+
+</head>
+<body>
+<a class="skip" href="#main">Skip to main content</a>
+
+<!-- ============ NAV (single, frosted) ============ -->
+<header class="subnav" id="nav">
+  <div class="subnav-inner">
+    <a class="cat" href="#top"><span class="mark"></span>Spillway</a>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#developers">Developers</a>
+      <a href="#pricing">Pricing</a>
+      <a class="nav-search keep" href="#" aria-label="Search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
+      </a>
+      <a class="btn btn-primary keep" href="#cta">Start free</a>
+    </div>
+    <span class="progress" aria-hidden="true"></span>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============ HERO ============ -->
+<section class="tile light hero" id="top">
+  <div class="container">
+    <span class="eyebrow reveal"><span class="dot"></span>now in open alpha</span>
+    <h1 class="t-hero reveal reveal-mask" style="transition-delay:.06s"><span class="line"><em>AI spend, governed.</em></span><span class="line"><em>Not just observed.</em></span></h1>
+    <p class="t-lead reveal" style="transition-delay:.16s">Spillway is the control plane between your apps and every model — budgets that block, approvals that gate, and routing that saves.</p>
+    <div class="hero-ctas reveal" style="transition-delay:.18s">
+      <a class="btn btn-primary" href="#cta">Start free</a>
+      <a class="text-link" href="#developers" style="font-size:18px">Watch it work <span class="chev" aria-hidden="true">›</span></a>
+    </div>
+
+    
+    <div class="hero-shot reveal" style="transition-delay:.22s">
+      <div class="hero-shot-bar"><i></i><i></i><i></i><span class="addr">app.spillway.dev / dashboard</span></div>
+      <div class="hero-shot-body in-view gov-card-static">
+        <div><div class="vcard cost-card">
+          <div class="vc-head cost-head">
+            <div>
+              <span class="vc-title">Monthly spend</span>
+              <div class="cost-total"><span class="ct-cur">$</span><span>64,000</span></div>
+            </div>
+            <span class="cost-badge">▼ <span>47</span>%</span>
+          </div>
+
+          <div class="chart2">
+            <div class="chart2-y"><span>$120k</span><span>$80k</span><span>$40k</span><span>$0</span></div>
+            <div class="chart2-main">
+              <div class="chart2-plot">
+                <span class="gridline" style="top:0"></span>
+                <span class="gridline" style="top:33.3%"></span>
+                <span class="gridline" style="top:66.6%"></span>
+                <span class="gridline" style="top:100%"></span>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:92%"></span><span class="c2val">110</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:84%"></span><span class="c2val">101</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:71%"></span><span class="c2val">85</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:63%"></span><span class="c2val">76</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:55%"></span><span class="c2val">66</span></div>
+                <div class="c2col current"><span class="c2base"></span><span class="c2spend" style="--h:53%"></span><span class="c2val accent">64</span></div>
+              </div>
+              <div class="chart2-x"><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span></div>
+            </div>
+          </div></div>
+        <div><div class="vcard gov-card">
+          <div class="vc-head"><span class="vc-title">Spend limits · June</span><span class="vc-title gov-live">enforcing</span></div>
+          <div class="gov-meters">
+            <div class="gmeter" style="--w:41%"><span class="gm-lbl">org · acme</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$8.2k / $20k</span></div>
+            <div class="gmeter" style="--w:63%"><span class="gm-lbl">team · platform</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$3.1k / $5k</span></div>
+            <div class="gmeter hot" style="--w:97%"><span class="gm-lbl">key · batch-embed</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$970 / $1k</span></div>
+          </div></div>
+      </div>
+    </div>
+
+
+    <div class="artifact-wrap reveal" style="transition-delay:.26s">
+      <div class="console" id="console">
+        <div class="console-bar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <span class="addr">api.spillway.dev / v1 / route</span>
+          <span class="live">live</span>
+        </div>
+        <div class="console-body">
+          <div class="console-left">
+            <div class="con-label">Incoming prompt</div>
+            <div class="con-prompt">“<span id="typed"></span><span class="cursor" id="caret"></span>”</div>
+            <div class="con-meta">
+              <div>
+                <div class="k">Tokens</div>
+                <div class="v" id="tokCount">0</div>
+              </div>
+              <div>
+                <div class="k">Classifier</div>
+                <div class="v">2.1 ms</div>
+              </div>
+              <div>
+                <div class="k">Policy</div>
+                <div class="v">balanced</div>
+              </div>
+            </div>
+            <div class="route-row">
+              <button class="route-btn" id="routeBtn" type="button"><span class="rb-label">Route prompt</span></button>
+              <span class="route-hint"><span class="kbd">⌘</span><span class="kbd">↵</span></span>
+            </div>
+          </div>
+          <div class="console-right idle" id="consoleRight">
+            <div class="con-label">Tier probability <span class="tier-status" id="tierStatus">awaiting prompt</span></div>
+            <div class="tier-bar">
+              <i class="cheap" id="segCheap" style="flex:0"></i>
+              <i class="mid" id="segMid" style="flex:0"></i>
+              <i class="prem" id="segPrem" style="flex:0"></i>
+            </div>
+            <div class="tier-legend" id="tierLegend"><span>cheap</span><span>mid</span><span>premium</span></div>
+
+            <div class="pick">
+              <div class="routed">Routed to</div>
+              <div class="model" id="pickModel">—</div>
+              <div class="row">
+                <span id="pickCost">—</span>
+                <span id="pickLat">—</span>
+                <span class="delta" id="pickDelta">—</span>
+              </div>
+            </div>
+
+            <div class="con-foot">
+              <span class="ok" id="conFootOk">awaiting route</span>
+              <span id="conFootReq">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="demo-cursor" id="demoCursor" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 3l14 7-6 1.5L9.5 18 5 3z" fill="#1d1d1f" stroke="#fff" stroke-width="1.4" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ONE ENDPOINT — kinetic model wall (dark) ============ -->
+<section class="tile dark on-dark" id="how">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow"><span class="dot"></span>one endpoint</span>
+      <h2 class="t-display">Every model. One line of code.</h2>
+    </div>
+
+    <div class="endpoint reveal" style="transition-delay:.1s">
+      <div class="mwall" aria-hidden="true">
+        <div class="mwall-lanes" id="mwallLanes"></div>
+        <div class="mwall-well"></div>
+      </div>
+
+      <div class="oneline">
+        <span class="ol-kicker">your code, unchanged</span>
+        <div class="ol-code"><span class="k">model</span><span class="eq">=</span><span class="str">"auto"</span><span class="ol-caret"></span></div>
+        <div class="ol-sub">one key · one endpoint · every request metered &amp; governed</div>
+      </div>
+    </div>
+
+    <div class="endpoint-stats reveal" style="transition-delay:.2s" aria-hidden="true">
+      <div><span class="es-num accent" data-target="100" data-suffix="+">0</span><span class="es-lbl">models on tap</span></div>
+      <div class="es-div"></div>
+      <div><span class="es-num">3</span><span class="es-lbl">providers, one bill</span></div>
+      <div class="es-div"></div>
+      <div><span class="es-num">1</span><span class="es-lbl">line to change</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SAVINGS (parchment) ============ -->
+<section class="tile parchment" id="savings">
+  <div class="container" style="text-align:center">
+    <span class="eyebrow reveal"><span class="dot"></span>the routing dividend</span>
+    <div class="bignum reveal" id="savBig" style="margin:18px auto 0"><span class="sign">−</span><span class="num" id="savNum" data-target="47">0</span><span class="unit">%</span></div>
+    <p class="t-lead reveal" style="margin:8px auto 0;color:var(--ink-80);max-width:18ch">Spend cut. Answers unchanged.</p>
+  </div>
+</section>
+
+<!-- ============ FEATURE 1 — cost dashboard (light) ============ -->
+<section class="tile light" id="features">
+  <div class="container">
+    <div class="split reveal">
+      <div class="copy">
+        <span class="eyebrow"><span class="dot"></span>observability</span>
+        <h2 class="t-display">See every dollar.</h2>
+        <p class="t-lead-airy muted">Live spend by org, team, and key — down to a single request.</p>
+        <a class="text-link" href="#">Explore the dashboard <span class="chev" aria-hidden="true">›</span></a>
+      </div>
+      <div class="visual">
+        <div class="vcard cost-card" id="costCard">
+          <div class="vc-head cost-head">
+            <div>
+              <span class="vc-title">Monthly spend</span>
+              <div class="cost-total"><span class="ct-cur">$</span><span id="costTotal">0</span></div>
+            </div>
+            <span class="cost-badge">▼ <span id="costBadge">0</span>%</span>
+          </div>
+
+          <div class="chart2">
+            <div class="chart2-y"><span>$120k</span><span>$80k</span><span>$40k</span><span>$0</span></div>
+            <div class="chart2-main">
+              <div class="chart2-plot" id="costPlot">
+                <span class="gridline" style="top:0"></span>
+                <span class="gridline" style="top:33.3%"></span>
+                <span class="gridline" style="top:66.6%"></span>
+                <span class="gridline" style="top:100%"></span>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:92%"></span><span class="c2val">110</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:84%"></span><span class="c2val">101</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:71%"></span><span class="c2val">85</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:63%"></span><span class="c2val">76</span></div>
+                <div class="c2col"><span class="c2base"></span><span class="c2spend" style="--h:55%"></span><span class="c2val">66</span></div>
+                <div class="c2col current"><span class="c2base"></span><span class="c2spend" style="--h:53%"></span><span class="c2val accent">64</span></div>
+              </div>
+              <div class="chart2-x"><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span></div>
+            </div>
+          </div>
+
+          <div class="cost-foot">
+            <div class="cost-saved"><span class="cf-num">$<span id="costSaved">0</span></span><span class="cf-lbl">saved this period</span></div>
+            <div class="chart-key">
+              <span class="k-spend"><i></i>spend</span>
+              <span class="k-base"><i></i>frontier baseline</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURE 2 — route ledger (dark) ============ -->
+<section class="tile dark on-dark">
+  <div class="container">
+    <div class="split rev reveal">
+      <div class="copy">
+        <span class="eyebrow"><span class="dot"></span>transparency</span>
+        <h2 class="t-display">Replay any decision.</h2>
+        <p class="t-lead-airy muted">Every prompt, its tier, the model it took, and what you saved.</p>
+        <a class="text-link" href="#">See the route log <span class="chev" aria-hidden="true">›</span></a>
+      </div>
+      <div class="visual">
+        <div class="tilt-wrap">
+        <div class="vcard dark tilt" id="routeCard">
+          <div class="tilt-glare" aria-hidden="true"></div>
+          <div class="vc-head"><span class="vc-title">Recent routes</span><span class="vc-title" style="color:#54c98a">live</span></div>
+          <div class="ledger">
+            <div class="lrow"><span class="task"><span class="tdot cheap"></span>classify ticket</span><span class="model">haiku</span><span class="delta">−<span class="dv" data-val="92">0</span>%</span></div>
+            <div class="lrow"><span class="task"><span class="tdot mid"></span>refactor hook</span><span class="model">4.1-mini</span><span class="delta">−<span class="dv" data-val="72">0</span>%</span></div>
+            <div class="lrow"><span class="task"><span class="tdot cheap"></span>summarize doc</span><span class="model">flash-lite</span><span class="delta">−<span class="dv" data-val="88">0</span>%</span></div>
+            <div class="lrow"><span class="task"><span class="tdot prem"></span>analyze 10-K</span><span class="model">gemini-pro</span><span class="delta">−<span class="dv" data-val="44">0</span>%</span></div>
+            <div class="lrow"><span class="task"><span class="tdot mid"></span>rewrite tone</span><span class="model">sonnet</span><span class="delta">−<span class="dv" data-val="50">0</span>%</span></div>
+          </div>
+        </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============ FEATURE 2.5 — governance (light) ============ -->
+<section class="tile light" id="governance">
+  <div class="container">
+    <div class="split reveal">
+      <div class="copy">
+        <span class="eyebrow"><span class="dot"></span>governance</span>
+        <h2 class="t-display">Budgets that block. Approvals that&nbsp;gate.</h2>
+        <p class="t-lead-airy muted">Limits cascade org → team → key and hard-stop at the gateway. Big spends wait for a human yes.</p>
+        <a class="text-link" href="#pricing">See governance <span class="chev" aria-hidden="true">›</span></a>
+      </div>
+      <div class="visual">
+        <div class="vcard gov-card" id="govCard">
+          <div class="vc-head"><span class="vc-title">Spend limits · June</span><span class="vc-title gov-live">enforcing</span></div>
+          <div class="gov-meters">
+            <div class="gmeter" style="--w:41%"><span class="gm-lbl">org · acme</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$8.2k / $20k</span></div>
+            <div class="gmeter" style="--w:63%"><span class="gm-lbl">team · platform</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$3.1k / $5k</span></div>
+            <div class="gmeter hot" style="--w:97%"><span class="gm-lbl">key · batch-embed</span><span class="gm-track"><i class="gm-fill"></i></span><span class="gm-val">$970 / $1k</span></div>
+          </div>
+          <div class="gov-event" id="govEvent">
+            <span class="ge-icon" aria-hidden="true"></span>
+            <span class="ge-text"><span class="ge-title">budget increase · +$500</span><span class="ge-sub">requested by dev-platform</span></span>
+            <span class="ge-state" id="govState">pending</span>
+          </div>
+          <div class="gov-foot"><span class="gf-block">✕ 3 requests blocked at the limit</span><span class="gf-note">zero overruns</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURE 3 — guardrails (full-bleed scroll scene) ============ -->
+<section class="gr-scroll" id="grScroll">
+  <div class="gr-pin on-dark">
+    <div class="gr-bg"></div>
+    <div class="gr-grid"></div>
+    <div class="gr-glow" id="grGlow"></div>
+    <div class="gr-vignette"></div>
+
+    <div class="gr-frame" aria-hidden="true">
+      <span class="gr-frame-lbl tl">Governance — quality gate</span>
+      <span class="gr-frame-lbl tr" id="grPct">000</span>
+      <span class="gr-frame-lbl bl">Spillway gateway · spec 16 §5</span>
+      <span class="gr-frame-lbl br">scroll to scrub</span>
+    </div>
+    <div class="gr-traj" id="grTraj" aria-hidden="true"></div>
+
+    <div class="gr-head">
+      <span class="eyebrow on-dark-eyebrow"><span class="dot"></span>guardrails</span>
+    </div>
+
+    <!-- PROMPT — origin at the left edge -->
+    <div class="gr-prompt" id="grPrompt">
+      <div class="gr-prompt-head"><span class="gr-mono">INCOMING PROMPT</span><span class="gr-mono dim">1,284 tok</span></div>
+      <p class="gr-prompt-text">“Summarize this 40-page vendor contract and flag every clause that creates liability for us.”</p>
+      <div class="gr-prompt-tags"><span class="gr-tag">legal</span><span class="gr-tag">long-context</span><span class="gr-tag warn">high-stakes</span></div>
+    </div>
+
+    <!-- SMALL MODEL carrier -->
+    <div class="gr-carrier sm" id="grSm">
+      <span class="gr-mono gr-carrier-cap">first attempt</span>
+      <span class="gr-bits" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div class="gr-chip cheap">
+        <span class="gr-chip-node"><i></i><i></i></span>
+        <span class="gr-chip-text"><span class="gr-chip-name">claude-3.5-haiku</span><span class="gr-mono gr-chip-tier">CHEAP · small model</span></span>
+      </div>
+      <span class="gr-answer">draft answer</span>
+    </div>
+
+    <!-- BIG MODEL carrier -->
+    <div class="gr-carrier lg" id="grLg">
+      <span class="gr-mono gr-carrier-cap">escalation</span>
+      <span class="gr-bits" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div class="gr-chip prem">
+        <span class="gr-chip-node big"><i></i><i></i><i></i><i></i></span>
+        <span class="gr-chip-text"><span class="gr-chip-name">claude-3.7-sonnet</span><span class="gr-mono gr-chip-tier">PREMIUM · large model</span></span>
+      </div>
+      <span class="gr-answer">verified answer</span>
+    </div>
+
+    <!-- GUARDRAIL — full-height barrier near the right edge -->
+    <div class="gr-gate" id="grGate">
+      <div class="gr-gate-plate">
+        <span class="gr-mono gr-gate-title">QUALITY GUARDRAIL</span>
+        <span class="gr-mono gr-gate-thresh">accept&nbsp;≥&nbsp;0.85</span>
+        <span class="gr-gate-score">
+          <span class="gr-gate-fail">0.62</span>
+          <span class="gr-gate-pass">0.94</span>
+        </span>
+      </div>
+      <span class="gr-beam top"></span>
+      <span class="gr-beam bot"></span>
+      <span class="gr-seam"></span>
+    </div>
+
+    <div class="gr-cap" id="grCap"><span class="gr-cap-text"></span></div>
+
+    <div class="gr-tel" aria-hidden="true">
+      <div class="gr-tel-cell"><span class="k">attempt</span><span class="v" id="grTelA">—</span></div>
+      <div class="gr-tel-cell"><span class="k">model</span><span class="v" id="grTelM">—</span></div>
+      <div class="gr-tel-cell"><span class="k">score</span><span class="v" id="grTelS">—</span></div>
+      <div class="gr-tel-cell"><span class="k">status</span><span class="v" id="grTelSt">armed</span></div>
+    </div>
+    <div class="gr-rail" aria-hidden="true"><span class="gr-rail-fill" id="grRailFill"></span></div>
+    <span class="gr-scrollhint" id="grHint">scroll to play <span class="gr-chev">↓</span></span>
+  </div>
+</section>
+
+<!-- ============ QUOTE (dark) ============ -->
+<section class="tile dark on-dark">
+  <div class="container">
+    <div class="story reveal">
+      <div class="story-main">
+        <span class="eyebrow"><span class="dot"></span>customer story</span>
+        <blockquote class="story-quote">We cut our model bill <span class="hl">nearly in half</span> in an afternoon — and our evals didn&rsquo;t move.</blockquote>
+        <div class="quote-by">
+          <span class="avatar" aria-hidden="true">PN</span>
+          <span class="meta">
+            <span class="nm">Priya Nair</span>
+            <span class="rl">Head of Platform · Series-B fintech</span>
+          </span>
+        </div>
+      </div>
+      <div class="story-side">
+        <div class="story-stat"><span class="ss-num blue">−48%</span><span class="ss-lbl">model spend</span></div>
+        <div class="story-stat"><span class="ss-num">0</span><span class="ss-lbl">eval regressions</span></div>
+        <div class="story-stat"><span class="ss-num">1</span><span class="ss-lbl">afternoon to ship</span></div>
+        <div class="story-stat foot"><span class="ss-mono">spillway dashboard · june</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DEVELOPERS / CODE (darker) ============ -->
+<section class="tile darker on-dark" id="developers">
+  <div class="container">
+    <div class="code-grid">
+      <div class="section-head reveal">
+        <span class="eyebrow"><span class="dot"></span>drop-in compatible</span>
+        <h2 class="t-display">Change one line.</h2>
+        <p class="t-lead-airy muted">Point your OpenAI client at Spillway. Keep everything else.</p>
+        <a class="btn btn-ghost" href="#" style="margin-top:24px">Read the docs <span aria-hidden="true">›</span></a>
+      </div>
+      <div class="code-card reveal" style="transition-delay:.1s">
+        <div class="code-head"><i></i><i></i><i></i><span class="f">route.py</span></div>
+        <pre class="code-body"><span class="cmt"># pip install openai — no new SDK</span>
+<span class="kw">from</span> openai <span class="kw">import</span> OpenAI
+
+client = <span class="fn">OpenAI</span>(
+    <span class="hl">base_url=<span class="str">"https://api.spillway.dev/v1"</span></span>,
+    api_key=os.environ[<span class="str">"SPILLWAY_KEY"</span>],
+)
+
+resp = client.chat.completions.<span class="fn">create</span>(
+    model=<span class="str">"auto"</span>,            <span class="cmt"># let Spillway choose</span>
+    messages=messages,
+    <span class="hl">extra_body={<span class="str">"policy"</span>: <span class="str">"balanced"</span>}</span>,
+)
+
+<span class="cmt"># resp.spillway → {tier, model, saved_usd}</span>
+<span class="fn">print</span>(resp.spillway.model)   <span class="cmt"># gpt-4.1-mini</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRICING (light) ============ -->
+<section class="tile light" id="pricing">
+  <div class="container">
+    <div class="section-head center reveal">
+      <span class="eyebrow"><span class="dot"></span>pricing</span>
+      <h2 class="t-display">Free to start.</h2>
+      <p class="t-lead-airy muted">Governance when you need it. Never a percent of your spend.</p>
+    </div>
+    <div class="plan-chips">
+      <div class="plan reveal">
+        <div class="name">Free</div>
+        <div class="price">$0<span> / mo</span></div>
+        <ul>
+          <li><span class="ck">✓</span> One endpoint, every model</li>
+          <li><span class="ck">✓</span> Budgets &amp; spend alerts</li>
+        </ul>
+        <a class="btn btn-ghost" href="#cta">Start free</a>
+      </div>
+      <div class="plan featured reveal" style="transition-delay:.08s">
+        <div class="name">Pro</div>
+        <div class="price">$49<span> / mo</span></div>
+        <ul>
+          <li><span class="ck">✓</span> Routing policies &amp; guardrails</li>
+          <li><span class="ck">✓</span> Anomaly detection</li>
+        </ul>
+        <a class="btn btn-primary" href="#cta">Start free</a>
+      </div>
+      <div class="plan reveal" style="transition-delay:.16s">
+        <div class="name">Governance</div>
+        <div class="price">$299<span> / mo</span></div>
+        <ul>
+          <li><span class="ck">✓</span> Approval workflows</li>
+          <li><span class="ck">✓</span> Chargeback &amp; audit exports</li>
+        </ul>
+        <a class="btn btn-ghost" href="#cta">Start free</a>
+      </div>
+    </div>
+    <p class="fine reveal" style="text-align:center;margin-top:28px">Enterprise — in-region, on-prem, SLA · <a class="text-link" href="#cta">Talk to us <span class="chev" aria-hidden="true">›</span></a></p>
+  </div>
+</section>
+
+<!-- ============ CTA BAND (parchment) ============ -->
+<section class="tile parchment cta-band" id="cta">
+  <div class="container reveal">
+    <span class="eyebrow"><span class="dot"></span>get started</span>
+    <h2 class="t-display" style="margin-top:16px">Govern your AI spend today.</h2>
+    <div class="hero-ctas">
+      <a class="btn btn-primary btn-large" href="#">Start free</a>
+      <a class="text-link" href="#developers" style="font-size:18px">Watch it work <span class="chev" aria-hidden="true">›</span></a>
+    </div>
+    <p class="fine">No credit card · 5-minute setup</p>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="footer">
+  <span class="watermark" aria-hidden="true">Spillway</span>
+  <div class="container">
+    <div class="footer-cols">
+      <div class="brand">
+        <div class="wordmark"><span class="mark"></span>Spillway</div>
+        <p>The control plane where AI spend is governed, not just observed. Budgets, approvals, anomaly alerts, and cost-aware routing — one endpoint in front of every model.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <ul><li><a href="#how">How it works</a></li><li><a href="#features">Features</a></li><li><a href="#governance">Governance</a></li><li><a href="#pricing">Pricing</a></li></ul>
+      </div>
+      <div>
+        <h4>Developers</h4>
+        <ul><li><a href="#developers">Documentation</a></li><li><a href="#">API reference</a></li><li><a href="#">Policies</a></li><li><a href="#">Status</a></li></ul>
+      </div>
+      <div>
+        <h4>Company</h4>
+        <ul><li><a href="#">About</a></li><li><a href="#">Blog</a></li><li><a href="#">Careers</a></li><li><a href="#">Contact</a></li></ul>
+      </div>
+      <div>
+        <h4>Legal</h4>
+        <ul><li><a href="#">Privacy</a></li><li><a href="#">Security</a></li><li><a href="#">Terms</a></li><li><a href="#">DPA</a></li></ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span>© 2026 Spillway Labs, Inc. Alpha software — figures are illustrative.</span>
+      <span class="links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Cookies</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // Word-mask headline reveals: split .t-display into per-word masked spans
+  (function () {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.t-display').forEach(function (h) {
+      if (h.querySelector('.w')) return;
+      var frag = document.createDocumentFragment();
+      var wi = 0;
+      h.childNodes.forEach(function (node) {
+        if (node.nodeType === 3) {
+          node.textContent.split(/(\s+)/).forEach(function (part) {
+            if (!part) return;
+            if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(' ')); return; }
+            var w = document.createElement('span');
+            w.className = 'w';
+            var inner = document.createElement('i');
+            inner.style.setProperty('--wi', String(wi++));
+            inner.textContent = part;
+            w.appendChild(inner);
+            frag.appendChild(w);
+          });
+        } else { frag.appendChild(node.cloneNode(true)); }
+      });
+      h.classList.add('wsplit');
+      h.innerHTML = '';
+      h.appendChild(frag);
+      // headlines outside a .reveal ancestor get their own trigger
+      if (!h.closest('.reveal')) {
+        new IntersectionObserver(function (es, o) {
+          if (es[0].isIntersecting) { h.classList.add('in'); o.disconnect(); }
+        }, { threshold: 0.4 }).observe(h);
+      }
+    });
+  })();
+
+  // Magnetic primary buttons + sheen sweep
+  (function () {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    document.querySelectorAll('.btn').forEach(function (b) {
+      var sheen = document.createElement('span');
+      sheen.className = 'sheen';
+      b.appendChild(sheen);
+      if (!b.classList.contains('btn-primary')) return;
+      var MAX = 6;
+      b.addEventListener('mousemove', function (e) {
+        var r = b.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width - 0.5;
+        var py = (e.clientY - r.top) / r.height - 0.5;
+        b.style.transform = 'translate(' + (px * MAX).toFixed(1) + 'px,' + (py * MAX).toFixed(1) + 'px)';
+      });
+      b.addEventListener('mouseleave', function () { b.style.transform = ''; });
+    });
+  })();
+
+  // Reveal on scroll
+  (function () {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+  })();
+
+  // Re-playable count helper (cancels any in-flight animation on the element)
+  function countTo(el, target, dur, fmt) {
+    if (!el) return;
+    fmt = fmt || function (v) { return String(v); };
+    if (el.__raf) cancelAnimationFrame(el.__raf);
+    var start = null;
+    function frame(t) {
+      if (start === null) start = t;
+      var p = Math.min(1, (t - start) / dur);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(Math.round(eased * target));
+      if (p < 1) { el.__raf = requestAnimationFrame(frame); }
+      else { el.textContent = fmt(target); el.__raf = null; }
+    }
+    el.__raf = requestAnimationFrame(frame);
+  }
+  function stopCount(el) { if (el && el.__raf) { cancelAnimationFrame(el.__raf); el.__raf = null; } }
+
+  // One endpoint — build drifting model-name lanes + count the stat strip
+  (function () {
+    var lanes = document.getElementById('mwallLanes');
+    if (!lanes) return;
+
+    // Top ~100 models on OpenRouter (May 2026 usage rankings). [name, tier]
+    // tier tints the dot: cheap=green · mid=blue · prem=purple
+    var MODELS = [
+      ['mimo-v2-pro','prem'], ['claude-sonnet-4.6','mid'], ['minimax-m2.7','mid'], ['deepseek-v3.2','mid'],
+      ['qwen-3.6-plus','mid'], ['claude-opus-4.6','prem'], ['gpt-5.4','prem'], ['gemini-3.1-pro','prem'],
+      ['kimi-k2','mid'], ['gemini-3.1-flash-lite','cheap'], ['claude-haiku-4.5','cheap'], ['gpt-5.4-mini','mid'],
+      ['mimo-v2.5-pro','prem'], ['deepseek-v4-pro','prem'], ['gemini-3.1-flash','mid'], ['kimi-k2-thinking','prem'],
+      ['claude-3.7-sonnet','mid'], ['gpt-5.1','prem'], ['qwen3-max','prem'], ['glm-4.6','mid'],
+      ['minimax-m2','mid'], ['deepseek-v4-flash','mid'], ['gemini-2.5-pro','prem'], ['llama-4-maverick','mid'],
+      ['mistral-large-3','prem'], ['grok-4','prem'], ['gpt-4.1','mid'], ['claude-3.5-sonnet','mid'],
+      ['qwen3-coder','mid'], ['deepseek-r1','prem'], ['gemini-2.5-flash','mid'], ['mimo-v2-omni','mid'],
+      ['o3','prem'], ['command-a','mid'], ['nemotron-3-super','mid'], ['llama-4-scout','mid'],
+      ['gpt-4.1-mini','mid'], ['qwen3-235b','mid'], ['grok-4-fast','mid'], ['glm-4.5','mid'],
+      ['mistral-medium-3','mid'], ['gemini-2.5-flash-lite','cheap'], ['claude-3.5-haiku','cheap'], ['kimi-linear','mid'],
+      ['gpt-oss-120b','mid'], ['deepseek-v3','mid'], ['o4-mini','mid'], ['nova-pro','mid'],
+      ['llama-3.3-70b','mid'], ['qwen3-32b','mid'], ['gpt-5-mini','mid'], ['claude-opus-4.1','prem'],
+      ['magistral-medium','mid'], ['grok-3','prem'], ['gemma-3-27b','mid'], ['minimax-01','cheap'],
+      ['gpt-4o','mid'], ['qwq-32b','mid'], ['sonar-pro','mid'], ['codestral-2','mid'],
+      ['llama-3.1-405b','prem'], ['glm-4.5-air','cheap'], ['o3-mini','mid'], ['pixtral-large','prem'],
+      ['gemini-2.0-flash','cheap'], ['qwen-2.5-72b','mid'], ['mistral-small-3.2','cheap'], ['nemotron-3-nano-omni','cheap'],
+      ['gpt-4.1-nano','cheap'], ['deepseek-coder-v2','mid'], ['command-r-plus','mid'], ['grok-3-mini','cheap'],
+      ['llama-3.1-70b','mid'], ['qwen3-14b','cheap'], ['gemma-3-12b','cheap'], ['nova-lite','cheap'],
+      ['mixtral-8x22b','mid'], ['gpt-oss-20b','cheap'], ['yi-large','mid'], ['grok-code-fast-1','mid'],
+      ['gpt-4o-mini','cheap'], ['qwen3-8b','cheap'], ['ministral-8b','cheap'], ['devstral-medium','mid'],
+      ['llama-3.1-8b','cheap'], ['command-r','cheap'], ['sonar-reasoning','mid'], ['nemotron-nano-9b-v2','cheap'],
+      ['gemma-2-9b','cheap'], ['mixtral-8x7b','cheap'], ['nova-micro','cheap'], ['step-3.5-flash','cheap'],
+      ['phi-4','cheap'], ['owl-alpha','prem'], ['claude-3-haiku','cheap'], ['laguna-m.1','mid'],
+      ['reka-flash-3','cheap'], ['phi-4-mini','cheap'], ['dbrx-instruct','mid'], ['mistral-large-2','prem']
+    ];
+
+    var LANE_CFG = [
+      { dir: 'l', dur: 96 }, { dir: 'r', dur: 118 }, { dir: 'l', dur: 104 }, { dir: 'r', dur: 126 }
+    ];
+    var NL = LANE_CFG.length;
+    var buckets = LANE_CFG.map(function () { return ''; });
+    MODELS.forEach(function (m, i) {
+      buckets[i % NL] += '<span class="m-chip ' + m[1] + '"><i></i>' + m[0] + '</span>';
+    });
+    LANE_CFG.forEach(function (cfg, i) {
+      var row = document.createElement('div');
+      row.className = 'mlane ' + cfg.dir;
+      row.style.animationDuration = cfg.dur + 's';
+      row.innerHTML = buckets[i] + buckets[i]; // duplicate set for a seamless loop
+      lanes.appendChild(row);
+    });
+
+    // count the "40+" stat when the strip enters view
+    var strip = document.querySelector('.endpoint-stats');
+    if (!strip) return;
+    var num = strip.querySelector('.es-num[data-target]');
+    var target = num ? parseInt(num.getAttribute('data-target'), 10) : 0;
+    var suffix = num ? (num.getAttribute('data-suffix') || '') : '';
+    var fmt = function (v) { return v + suffix; };
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      if (num) num.textContent = fmt(target);
+      return;
+    }
+    var shown = false;
+    new IntersectionObserver(function (entries) {
+      var vis = entries[0].isIntersecting;
+      if (vis && !shown) { shown = true; if (num) countTo(num, target, 1100, fmt); }
+      else if (!vis && shown) { shown = false; if (num) { stopCount(num); num.textContent = fmt(0); } }
+    }, { threshold: 0.5 }).observe(strip);
+  })();
+
+  // Route ledger — 3D mouse parallax tilt + animated savings percentages
+  (function () {
+    var card = document.getElementById('routeCard');
+    if (!card) return;
+    var wrap = card.parentElement;
+    var hoverable = window.matchMedia('(hover: hover)').matches;
+    var MAX = 9;
+    if (hoverable) {
+      wrap.addEventListener('mousemove', function (e) {
+        var r = card.getBoundingClientRect();
+        var px = (e.clientX - r.left) / r.width - 0.5;
+        var py = (e.clientY - r.top) / r.height - 0.5;
+        card.classList.add('tilting');
+        card.style.transform = 'rotateX(' + (-py * MAX).toFixed(2) + 'deg) rotateY(' + (px * MAX).toFixed(2) + 'deg)';
+        card.style.setProperty('--gx', ((px + 0.5) * 100).toFixed(1) + '%');
+        card.style.setProperty('--gy', ((py + 0.5) * 100).toFixed(1) + '%');
+      });
+      wrap.addEventListener('mouseleave', function () {
+        card.classList.remove('tilting');
+        card.style.transform = '';
+      });
+    }
+
+    // Animate the −% deltas on entry; reset on exit (replays each time)
+    var dvs = card.querySelectorAll('.dv');
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      dvs.forEach(function (d) { d.textContent = d.getAttribute('data-val'); });
+      return;
+    }
+    var shown = false;
+    new IntersectionObserver(function (entries) {
+      var vis = entries[0].isIntersecting;
+      if (vis && !shown) {
+        shown = true;
+        dvs.forEach(function (d, i) { countTo(d, parseInt(d.getAttribute('data-val'), 10), 850 + i * 70); });
+      } else if (!vis && shown) {
+        shown = false;
+        dvs.forEach(function (d) { stopCount(d); d.textContent = '0'; });
+      }
+    }, { threshold: 0.4 }).observe(card);
+  })();
+
+  // Savings figure — counts to −47% every time it enters view, resets on exit
+  (function () {
+    var num = document.getElementById('savNum');
+    var big = document.getElementById('savBig');
+    if (!num || !big) return;
+    var target = parseInt(num.getAttribute('data-target'), 10) || 47;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { num.textContent = String(target); return; }
+    var shown = false;
+    new IntersectionObserver(function (entries) {
+      var vis = entries[0].isIntersecting;
+      if (vis && !shown) { shown = true; countTo(num, target, 1300); }
+      else if (!vis && shown) { shown = false; stopCount(num); num.textContent = '0'; }
+    }, { threshold: 0.55 }).observe(big);
+  })();
+
+  // Cost dashboard — bars grow + figures count on entry, collapse/reset on exit
+  (function () {
+    var card = document.getElementById('costCard');
+    if (!card) return;
+    var badge = document.getElementById('costBadge');
+    var total = document.getElementById('costTotal');
+    var saved = document.getElementById('costSaved');
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      card.classList.add('in-view'); badge.textContent = '47'; total.textContent = '64,000'; saved.textContent = '218,000'; return;
+    }
+    var comma = function (v) { return v.toLocaleString('en-US'); };
+    var shown = false;
+    new IntersectionObserver(function (entries) {
+      var vis = entries[0].isIntersecting;
+      if (vis && !shown) {
+        shown = true;
+        card.classList.add('in-view');
+        countTo(badge, 47, 1100); countTo(total, 64000, 1200, comma); countTo(saved, 218000, 1400, comma);
+      } else if (!vis && shown) {
+        shown = false;
+        card.classList.remove('in-view');
+        stopCount(badge); stopCount(total); stopCount(saved);
+        badge.textContent = '0'; total.textContent = '0'; saved.textContent = '0';
+      }
+    }, { threshold: 0.35 }).observe(card);
+  })();
+
+  // Typewriter + animated routing demo in the hero console
+  (function () {
+    var typed = document.getElementById('typed');
+    var caret = document.getElementById('caret');
+    var tok = document.getElementById('tokCount');
+    var right = document.getElementById('consoleRight');
+    var btn = document.getElementById('routeBtn');
+    var status = document.getElementById('tierStatus');
+    var legend = document.getElementById('tierLegend');
+    var segC = document.getElementById('segCheap');
+    var segM = document.getElementById('segMid');
+    var segP = document.getElementById('segPrem');
+    var cursor = document.getElementById('demoCursor');
+    var consoleEl = document.getElementById('console');
+    if (!typed || !btn) return;
+
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    var SCENES = [
+      { prompt: "What's the capital of Portugal?",
+        tiers: [0.94, 0.05, 0.01], model: 'claude-3.5-haiku',
+        cost: '$0.80 / M tok', lat: '1.3 s', delta: '−92% vs frontier', req: 'req_3b1f…a7' },
+      { prompt: 'Refactor this React hook to support cancellation and add proper TypeScript generics.',
+        tiers: [0.08, 0.69, 0.23], model: 'gpt-4.1-mini',
+        cost: '$1.60 / M tok', lat: '2.1 s', delta: '−72% vs frontier', req: 'req_8f2a…c4' },
+      { prompt: 'Prove that the sum of two odd integers is even, using the formal definition.',
+        tiers: [0.04, 0.22, 0.74], model: 'claude-3.7-sonnet',
+        cost: '$3.00 / M tok', lat: '2.9 s', delta: '−50% vs frontier', req: 'req_d70c…12' },
+      { prompt: 'Regenerate embeddings for the entire 2M-document corpus, all namespaces.',
+        blocked: true, tiers: [0.02, 0.18, 0.80], model: 'blocked by policy',
+        cost: 'key · batch-embed', lat: 'budget $1k/day', delta: 'would exceed by $312', req: 'req_44e1…9c' }
+    ];
+
+    var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+    var pct = function (n) { return Math.round(n * 100); };
+
+    function tierLabels(t) {
+      legend.innerHTML =
+        '<span>cheap · ' + pct(t[0]) + '%</span>' +
+        '<span>mid · ' + pct(t[1]) + '%</span>' +
+        '<span>premium · ' + pct(t[2]) + '%</span>';
+    }
+
+    function moveCursorTo(el, parkOffset) {
+      var cb = consoleEl.getBoundingClientRect();
+      var tb = el.getBoundingClientRect();
+      var x = tb.left - cb.left + tb.width / 2 - 4;
+      var y = tb.top - cb.top + tb.height / 2 - 2 + (parkOffset || 0);
+      cursor.style.left = x + 'px';
+      cursor.style.top = y + 'px';
+    }
+
+    function reset(scene) {
+      right.className = 'console-right idle';
+      typed.textContent = '';
+      tok.textContent = '0';
+      status.textContent = 'awaiting prompt';
+      segC.style.flex = '0'; segM.style.flex = '0'; segP.style.flex = '0';
+      legend.innerHTML = '<span>cheap</span><span>mid</span><span>premium</span>';
+      document.getElementById('pickModel').textContent = '—';
+      document.getElementById('pickCost').textContent = '—';
+      document.getElementById('pickLat').textContent = '—';
+      document.getElementById('pickDelta').textContent = '—';
+      document.getElementById('conFootOk').textContent = 'awaiting route';
+      document.getElementById('conFootReq').textContent = '—';
+      btn.querySelector('.rb-label').textContent = 'Route prompt';
+      caret.style.display = 'inline-block';
+    }
+
+    function type(text) {
+      return new Promise(function (resolve) {
+        var i = 0;
+        (function step() {
+          if (i <= text.length) {
+            typed.textContent = text.slice(0, i);
+            tok.textContent = Math.max(0, Math.round(i * 0.34)).toLocaleString();
+            i++;
+            setTimeout(step, 22 + Math.random() * 34);
+          } else { resolve(); }
+        })();
+      });
+    }
+
+    function ripple() {
+      var r = document.createElement('span');
+      r.className = 'rb-ripple';
+      btn.appendChild(r);
+      btn.classList.add('rippling');
+      setTimeout(function () { btn.classList.remove('rippling'); r.remove(); }, 560);
+    }
+
+    async function runScene(scene) {
+      reset(scene);
+      moveCursorTo(btn, 60);
+      await sleep(450);
+      await type(scene.prompt);
+      caret.style.display = 'none';
+      await sleep(360);
+      // move cursor to button
+      cursor.classList.add('show');
+      moveCursorTo(btn);
+      await sleep(760);
+      // click
+      cursor.classList.add('tap');
+      btn.classList.add('pressed');
+      ripple();
+      await sleep(150);
+      btn.classList.remove('pressed');
+      cursor.classList.remove('tap');
+      btn.querySelector('.rb-label').textContent = 'Scoring…';
+      // scoring
+      right.className = 'console-right scoring';
+      status.textContent = 'scoring…';
+      cursor.classList.remove('show');
+      await sleep(720);
+      // done — served, or hard-stopped by a budget (the governance beat)
+      right.className = 'console-right done' + (scene.blocked ? ' blocked' : '');
+      status.textContent = scene.blocked ? '✕ policy check' : '✓ classified';
+      segC.style.flex = String(scene.tiers[0]);
+      segM.style.flex = String(scene.tiers[1]);
+      segP.style.flex = String(scene.tiers[2]);
+      tierLabels(scene.tiers);
+      document.getElementById('pickModel').textContent = scene.model;
+      document.getElementById('pickCost').textContent = scene.cost;
+      document.getElementById('pickLat').textContent = scene.lat;
+      document.getElementById('pickDelta').textContent = scene.delta;
+      document.getElementById('conFootOk').textContent = scene.blocked
+        ? '✕ blocked · 402 budget_exceeded · nothing spent'
+        : '✓ accepted · logged · streaming';
+      document.getElementById('conFootReq').textContent = scene.req;
+      btn.querySelector('.rb-label').textContent = scene.blocked ? 'Blocked ✕' : 'Routed ✓';
+      await sleep(scene.blocked ? 3200 : 2800);
+    }
+
+    // Static fallback for reduced motion
+    if (reduce) {
+      var s = SCENES[1];
+      typed.textContent = s.prompt;
+      caret.style.display = 'none';
+      tok.textContent = Math.round(s.prompt.length * 0.34).toLocaleString();
+      right.className = 'console-right done';
+      status.textContent = '✓ classified';
+      segC.style.flex = String(s.tiers[0]); segM.style.flex = String(s.tiers[1]); segP.style.flex = String(s.tiers[2]);
+      tierLabels(s.tiers);
+      document.getElementById('pickModel').textContent = s.model;
+      document.getElementById('pickCost').textContent = s.cost;
+      document.getElementById('pickLat').textContent = s.lat;
+      document.getElementById('pickDelta').textContent = s.delta;
+      document.getElementById('conFootOk').textContent = '✓ accepted · logged · streaming';
+      document.getElementById('conFootReq').textContent = s.req;
+      btn.querySelector('.rb-label').textContent = 'Routed ✓';
+      return;
+    }
+
+    // Loop, but only while the console is on-screen
+    var visible = false, running = false;
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      if (visible && !running) loop();
+    }, { threshold: 0.25 }).observe(consoleEl);
+
+    async function loop() {
+      running = true;
+      var i = 0;
+      while (visible) {
+        await runScene(SCENES[i % SCENES.length]);
+        i++;
+      }
+      running = false;
+    }
+  })();
+
+  // Hero console — floating 3D object: mouse tilt + idle bob (bob in CSS)
+  (function () {
+    var con = document.getElementById('console');
+    if (!con || !window.matchMedia('(hover: hover)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var wrap = con.parentElement;
+    var MAX = 5;
+    wrap.addEventListener('mousemove', function (e) {
+      var r = con.getBoundingClientRect();
+      var px = (e.clientX - r.left) / r.width - 0.5;
+      var py = (e.clientY - r.top) / r.height - 0.5;
+      con.style.transform = 'rotateX(' + (-py * MAX).toFixed(2) + 'deg) rotateY(' + (px * MAX).toFixed(2) + 'deg)';
+    });
+    wrap.addEventListener('mouseleave', function () { con.style.transform = ''; });
+  })();
+
+  // Nav — frost flips dark while a dark tile is under it
+  (function () {
+    var nav = document.getElementById('nav');
+    var darks = Array.prototype.slice.call(document.querySelectorAll('.tile.dark, .tile.darker, .gr-scroll'));
+    if (!nav || !darks.length) return;
+    var ticking = false;
+    function check() {
+      var y = 57; // just under the nav hairline
+      var over = darks.some(function (el) {
+        var r = el.getBoundingClientRect();
+        return r.top <= y && r.bottom >= y;
+      });
+      nav.classList.toggle('over-dark', over);
+      ticking = false;
+    }
+    var prog = nav.querySelector('.progress');
+    function progress() {
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      if (prog) prog.style.setProperty('--sp', max > 0 ? String(Math.min(1, window.scrollY / max)) : '0');
+    }
+    window.addEventListener('scroll', function () {
+      if (!ticking) { ticking = true; requestAnimationFrame(function () { check(); progress(); }); }
+    }, { passive: true });
+    window.addEventListener('resize', function () { check(); progress(); });
+    check(); progress();
+  })();
+
+  // Route ledger — live ticker: a fresh route slides in every few seconds while visible
+  (function () {
+    var card = document.getElementById('routeCard');
+    if (!card || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var ledger = card.querySelector('.ledger');
+    var POOL = [
+      ['extract invoice', 'cheap', 'haiku', 91],
+      ['triage bug report', 'cheap', 'flash-lite', 89],
+      ['draft PR review', 'mid', '4.1-mini', 70],
+      ['legal clause scan', 'prem', 'sonnet', 46],
+      ['dedupe CRM rows', 'cheap', 'nano', 94],
+      ['translate release', 'mid', 'flash', 74],
+      ['score lead intent', 'cheap', 'haiku', 90],
+      ['plan sql migration', 'prem', 'gemini-pro', 41]
+    ];
+    var i = 0, timer = null;
+    function tick() {
+      var m = POOL[i++ % POOL.length];
+      var row = document.createElement('div');
+      row.className = 'lrow enter';
+      row.innerHTML = '<span class="task"><span class="tdot ' + m[1] + '"></span>' + m[0] + '</span>' +
+        '<span class="model">' + m[2] + '</span><span class="delta">−' + m[3] + '%</span>';
+      ledger.insertBefore(row, ledger.firstChild);
+      requestAnimationFrame(function () { requestAnimationFrame(function () { row.classList.remove('enter'); }); });
+      while (ledger.children.length > 5) {
+        var last = ledger.lastElementChild;
+        last.classList.add('exit');
+        (function (el) { setTimeout(function () { el.remove(); }, 420); })(last);
+        if (ledger.children.length > 6) ledger.lastElementChild.remove();
+        break;
+      }
+    }
+    new IntersectionObserver(function (entries) {
+      if (entries[0].isIntersecting) { if (!timer) timer = setInterval(tick, 2600); }
+      else { clearInterval(timer); timer = null; }
+    }, { threshold: 0.35 }).observe(card);
+  })();
+
+  // Governance card — meters fill on entry; the approval chip cycles pending → approved
+  (function () {
+    var card = document.getElementById('govCard');
+    if (!card) return;
+    var state = document.getElementById('govState');
+    var event = document.getElementById('govEvent');
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { card.classList.add('in-view'); state.textContent = 'approved'; event.classList.add('ok'); return; }
+    var timer = null;
+    function cycle() {
+      event.classList.remove('ok');
+      state.textContent = 'pending';
+      timer = setTimeout(function () {
+        state.textContent = 'approved ✓';
+        event.classList.add('ok');
+        timer = setTimeout(cycle, 3600);
+      }, 2200);
+    }
+    new IntersectionObserver(function (entries) {
+      if (entries[0].isIntersecting) {
+        card.classList.add('in-view');
+        if (!timer) cycle();
+      } else {
+        card.classList.remove('in-view');
+        clearTimeout(timer); timer = null;
+        event.classList.remove('ok'); state.textContent = 'pending';
+      }
+    }, { threshold: 0.4 }).observe(card);
+  })();
+
+  // Guardrails — scroll-scrubbed scene (full-bleed, prompt travels the width to the gate)
+  (function () {
+    var scroll = document.getElementById('grScroll');
+    if (!scroll) return;
+    var pin = scroll.querySelector('.gr-pin');
+    var prompt = document.getElementById('grPrompt');
+    var sm = document.getElementById('grSm');
+    var lg = document.getElementById('grLg');
+    var cap = document.getElementById('grCap');
+    var capText = cap.querySelector('.gr-cap-text');
+    var railFill = document.getElementById('grRailFill');
+    var hint = document.getElementById('grHint');
+
+    var clamp = function (v, a, b) { return Math.max(a, Math.min(b, v)); };
+    var seg = function (p, a, b) { return clamp((p - a) / (b - a), 0, 1); };
+    var smooth = function (t) { return t * t * (3 - 2 * t); };
+    var lerp = function (a, b, t) { return a + (b - a) * t; };
+
+    var SM_STOP = 66, LG_STOP = 66, EXIT = 118;
+
+    var caps = [
+      { t: 'A high-stakes prompt arrives', c: '', tel: ['—', '—', '—', 'armed'] },
+      { t: 'A small, cheap model takes the first pass', c: '', tel: ['01', 'claude-3.5-haiku', 'scoring…', 'armed'] },
+      { t: 'Its answer scores 0.62 \u2014 below the bar', c: 'warn', tel: ['01', 'claude-3.5-haiku', '0.62 ✕', 'rejected'] },
+      { t: 'So Spillway escalates to a larger model', c: '', tel: ['02', 'claude-3.7-sonnet', 'scoring…', 'armed'] },
+      { t: 'It clears the guardrail at 0.94 \u2014 shipped', c: 'ok', tel: ['02', 'claude-3.7-sonnet', '0.94 ✓', 'shipped'] }
+    ];
+    var telEls = ['grTelA', 'grTelM', 'grTelS', 'grTelSt'].map(function (id) { return document.getElementById(id); });
+    var lastCap = -1;
+    function setCap(i) {
+      if (i === lastCap) return;
+      lastCap = i;
+      cap.classList.remove('show');
+      clearTimeout(cap.__t);
+      cap.__t = setTimeout(function () {
+        capText.textContent = caps[i].t;
+        cap.className = 'gr-cap show' + (caps[i].c ? ' ' + caps[i].c : '');
+      }, 120);
+      caps[i].tel.forEach(function (v, k) {
+        if (!telEls[k]) return;
+        telEls[k].textContent = v;
+        telEls[k].className = 'v' + (caps[i].c ? ' ' + caps[i].c : '');
+      });
+    }
+
+    function render(p) {
+      // phase + caption index
+      var ci = p < 0.16 ? 0 : p < 0.40 ? 1 : p < 0.58 ? 2 : p < 0.82 ? 3 : 4;
+      var phase = (p >= 0.82) ? 'pass' : (p >= 0.40) ? 'block' : 'idle';
+      if (pin.dataset.phase !== phase) pin.dataset.phase = phase;
+      setCap(ci);
+
+      // PROMPT: slide in from the left edge, settle, then fade as the carrier collects it
+      var pLeft = lerp(-20, 6, smooth(seg(p, 0.0, 0.13)));
+      var pFade = seg(p, 0.24, 0.34);
+      var pOpa = seg(p, 0.02, 0.11) * (1 - pFade);
+      prompt.style.left = pLeft + '%';
+      prompt.style.opacity = pOpa;
+      prompt.style.transform = 'translateY(-50%) scale(' + lerp(1, 0.92, pFade) + ')';
+
+      // SMALL carrier: emerge at the prompt, travel to the gate, recoil when blocked, fade out
+      var smTravel = smooth(seg(p, 0.22, 0.42));
+      var smX = lerp(18, SM_STOP, smTravel) + Math.sin(seg(p, 0.42, 0.54) * Math.PI) * -5;
+      var smOut = seg(p, 0.54, 0.62);
+      sm.style.left = smX + '%';
+      sm.style.opacity = seg(p, 0.18, 0.24) * (1 - smOut);
+      sm.style.transform = 'translate(-50%,-50%) scale(' + lerp(1, 0.86, smOut) + ')';
+
+      // BIG carrier: appear, advance to the gate, then pass through off the right edge
+      var lgX = lerp(40, LG_STOP, smooth(seg(p, 0.62, 0.82)));
+      lgX = lerp(lgX, EXIT, smooth(seg(p, 0.82, 1.0)));
+      lg.style.left = lgX + '%';
+      lg.style.opacity = seg(p, 0.60, 0.68);
+      lg.style.transform = 'translate(-50%,-50%) scale(1.06)';
+
+      // 3D stage (when WebGL took over the actors)
+      if (window.__grScene) window.__grScene.render(p);
+
+      // trajectory: the dotted lane draws with whichever carrier is in flight
+      var traj = document.getElementById('grTraj');
+      if (traj) {
+        var t1 = smooth(seg(p, 0.22, 0.42));
+        var t2 = smooth(seg(p, 0.62, 1.0));
+        var tp = Math.max(t1 * 0.52, t2);
+        traj.style.transform = 'scaleX(' + tp + ')';
+        traj.style.opacity = String(seg(p, 0.18, 0.24) * (1 - seg(p, 0.96, 1)));
+      }
+      var pct = document.getElementById('grPct');
+      if (pct) pct.textContent = String(Math.round(p * 100)).padStart(3, '0');
+
+      // progress + hint
+      railFill.style.width = (p * 100) + '%';
+      hint.style.opacity = String(clamp(1 - p / 0.05, 0, 1));
+    }
+
+    var ticking = false;
+    function onScroll() {
+      var total = scroll.offsetHeight - window.innerHeight;
+      var p = total > 0 ? clamp(-scroll.getBoundingClientRect().top / total, 0, 1) : 0;
+      render(p);
+    }
+    window.addEventListener('scroll', function () {
+      if (!ticking) { requestAnimationFrame(function () { onScroll(); ticking = false; }); ticking = true; }
+    }, { passive: true });
+    window.addEventListener('resize', onScroll);
+    onScroll();
+  })();
+</script>
+
+<script type="module" src="../gr-scene.js"></script>
+<script src="../thread.js" defer></script>
+
+<style>
+/* fire the css-driven fills in the static composite */
+.hero-shot .gm-fill{width:var(--w)!important;transition:none}
+.hero-shot .c2spend{height:var(--h)!important;transition:none}
+.hero-shot .cost-card .c2val{opacity:1}
+</style>
+
+<div class="vswitch" aria-label="variant switcher">
+  <a href="./a.html">A</a><a href="./b.html">B</a><a href="./c.html">C</a><a href="./d.html">D</a><a href="./e.html" class="on">E</a><a href="./index.html" class="hub">✕</a>
+</div>
+<style>
+.vswitch{position:fixed;right:18px;bottom:18px;z-index:500;display:flex;gap:6px;padding:6px;background:rgba(20,20,22,.85);backdrop-filter:blur(12px);border-radius:999px;border:1px solid rgba(255,255,255,.14)}
+.vswitch a{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;color:#fff;font:600 13px/1 -apple-system,system-ui,sans-serif;background:rgba(255,255,255,.08)}
+.vswitch a:hover{background:#0066cc}
+.vswitch a.on{background:#0066cc}
+.vswitch a.hub{background:transparent;color:rgba(255,255,255,.6)}
+</style>
+
+</body>
+</html>

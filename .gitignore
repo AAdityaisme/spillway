@@ -1,0 +1,56 @@
+# ─── Secrets — NEVER commit ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── Dependencies ────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ─── Build output ────────────────────────────────────────────────────────
+dist/
+**/dist/
+apps/web/.vite/
+*.tsbuildinfo
+
+# ─── Test / coverage ─────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ─── Tooling / OS ────────────────────────────────────────────────────────
+*.log
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+drizzle/
+
+# ─── Local-only: spec + strategy — keep OFF git (founder directive) ────────
+docs/bible/
+docs/research/
+docs/audits/
+docs/plans/
+docs/superpowers/
+
+# Idea/strategy search — LOCAL ONLY, never commit
+/idea/
+
+# ─── Local-only: agent context + harness state ──────────────────────────
+/CLAUDE.md
+.claude/
+
+# stray Finder-duplicate lockfile (do not delete, do not commit)
+pnpm-lock 2.yaml
+
+# stray verification/temp scripts (never commit)
+*.tmp.mjs
+*.tmp.js
+
+# dev-only local auth keypair (never commit)
+.dev-auth-key.json
+
+# local-only session context + design scratch (same class as docs/bible|research|audits)
+HANDOFF.md
+docs/design/

@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spillway — Statement of Governed Spend</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Archivo:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- 0 · running head -->
+<header class="head">
+  <div class="head-inner">
+    <span class="wordmark">Spillway</span>
+    <span class="running">Statement of Governed Spend · 2026</span>
+    <nav><a href="#instruments">Instruments</a><a href="#fees">Fees</a><a href="#notes">Notes</a><a href="#subscribe" style="color:var(--blue)">Subscribe</a></nav>
+  </div>
+</header>
+
+<!-- 1 · cover / hero -->
+<section class="hero">
+  <div class="wrap ruled">
+    <div class="hero-grid">
+      <div class="left">
+        <span class="folio rv">Part I <b>/ Governance</b></span>
+        <h1 class="rv">AI spend, stated plainly and governed absolutely.</h1>
+        <p class="standfirst rv">Spillway is the control plane between your applications and every model provider — where budgets block before the spend<span class="note-ref" data-note="1">¹</span>, approvals carry signatures<span class="note-ref" data-note="2">²</span>, and every request is a line in an audited ledger.</p>
+        <div class="cta-row rv">
+          <a class="btn btn-blue" href="#subscribe">Read the statement →</a>
+          <div class="coupon">
+            <div class="coupon-inner">
+              <input type="email" placeholder="Work email for the free tier" aria-label="Work email" />
+              <button class="btn">File</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rv">
+        <div class="statement">
+          <div class="statement-head"><span class="t">Statement of Governed Spend</span><span class="live">● LIVE</span></div>
+          <div class="stmt-total"><span class="k">Blocked today, pre-spend</span><span class="v fig"><span class="red" id="blockedTotal">($1,204.00)</span></span></div>
+          <div class="stmt-rule-wrap"><div class="r1" id="rule1"></div><div class="r2" id="rule2"></div></div>
+          <table class="ledger-table" id="ledger">
+            <thead><tr><th>Time</th><th>Key</th><th>Model</th><th>Amount</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 2 · prospectus summary -->
+<section class="sec stmt-band">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Summary of Results <b>/ June</b></span>
+    </div>
+    <div class="stat-table">
+      <div class="stat rv"><div class="v fig red" data-fig="(1,204.00)" data-prefix="($" data-suffix=")">($0.00)</div><div class="under"></div><div class="under2"></div><div class="k">Blocked pre-transaction</div><p class="d">Requests refused at the gateway with a clean 402 — recorded, footnoted<span class="note-ref" data-note="1">¹</span>, never billed.</p></div>
+      <div class="stat rv"><div class="v fig" data-fig="8,342">0</div><div class="under"></div><div class="under2"></div><div class="k">Policies enforced</div><p class="d">Budget checks evaluated org → team → key, on every request, before the provider is called.</p></div>
+      <div class="stat rv"><div class="v fig" data-fig="312">0</div><div class="under"></div><div class="under2"></div><div class="k">Anomalies caught</div><p class="d">Weekday-aware baselines; trend breaks flagged before they reach an invoice<span class="note-ref" data-note="3">³</span>.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · the instruments -->
+<section class="sec" id="instruments">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Part II <b>/ The Instruments</b></span>
+      <h2 class="rv">Four instruments of governance.</h2>
+    </div>
+
+    <div class="clause rv">
+      <div class="clause-copy">
+        <span class="folio">§1 · Budgets that block</span>
+        <h2>The limit is the law.</h2>
+        <p class="body-text">Limits cascade from organization to team to key and are enforced at the gateway. An over-budget request is refused before the spend exists<span class="note-ref" data-note="1">¹</span> — the 402 arrives instead of the invoice.</p>
+      </div>
+      <div class="exhibit" id="ex-a">
+        <div class="exhibit-cap"><span>Exhibit A — Budget cascade · org → team → key</span><span>June</span></div>
+        <div class="exhibit-body">
+          <div class="gm" style="--w:41%"><span class="k">Org · Acme</span><span class="track"><i class="fill"></i></span><span class="v fig">$8,200 / $20,000</span></div>
+          <div class="gm" style="--w:63%"><span class="k">Team · Platform</span><span class="track"><i class="fill"></i></span><span class="v fig">$3,100 / $5,000</span></div>
+          <div class="gm hot" style="--w:97%"><span class="k">Key · batch-embed</span><span class="track"><i class="fill"></i></span><span class="v fig">$970 / $1,000</span></div>
+          <p class="blocked-note">Requests thereafter refused; amount not incurred, stated in red. <sup>1</sup></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="clause rv">
+      <div class="clause-copy">
+        <span class="folio">§2 · Approval workflows</span>
+        <h2>Signatures, not slack messages.</h2>
+        <p class="body-text">Spend above threshold waits for a named approver — with quorums, delegation, and expiry<span class="note-ref" data-note="2">²</span>. Every decision enters the record with its signature and timestamp.</p>
+      </div>
+      <div class="exhibit">
+        <div class="exhibit-cap"><span>Exhibit B — Approval record #482</span><span>Filed 09:51 UTC</span></div>
+        <div class="exhibit-body" style="font-family:var(--grot);font-size:14px;line-height:2">
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid rgba(216,207,192,.5);padding-bottom:8px"><span>Instrument</span><span class="fig">Budget increase · batch-embed</span></div>
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid rgba(216,207,192,.5);padding:8px 0"><span>Amount</span><span class="fig">$1,000 → $1,500 / day</span></div>
+          <div style="display:flex;justify-content:space-between;border-bottom:1px solid rgba(216,207,192,.5);padding:8px 0"><span>Requested by</span><span>dev-platform</span></div>
+          <div style="display:flex;justify-content:space-between;padding-top:8px"><span>Approved by</span><span id="approver" style="color:var(--ink-3)">pending · 1 of 1 required</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="clause rv">
+      <div class="clause-copy">
+        <span class="folio">§3 · Anomaly detection</span>
+        <h2>Variances, noted same-day.</h2>
+        <p class="body-text">Each key keeps its own baseline. When the run-rate departs from it, the variance is flagged<span class="note-ref" data-note="3">³</span> — and, where authorized, the key is suspended pending review.</p>
+      </div>
+      <div class="exhibit">
+        <div class="exhibit-cap"><span>Exhibit C — Variance register</span><span>Live</span></div>
+        <div class="exhibit-body" style="padding:0">
+          <table class="ledger-table">
+            <thead><tr><th>Time</th><th>Subject</th><th>Finding</th><th>Variance</th></tr></thead>
+            <tbody>
+              <tr><td class="muted">09:41</td><td>batch-embed</td><td class="red">4.2× weekday baseline</td><td class="red fig">+$312/hr</td></tr>
+              <tr><td class="muted">09:40</td><td>batch-embed</td><td>auto-suspend armed</td><td class="muted">—</td></tr>
+              <tr><td class="muted">09:40</td><td>team platform</td><td>run-rate normal</td><td class="fig">+0.2%</td></tr>
+              <tr><td class="muted">09:39</td><td>org forecast</td><td>within budget</td><td class="fig">−4.1%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="clause rv">
+      <div class="clause-copy">
+        <span class="folio">§4 · Cost-aware routing</span>
+        <h2>The prudent route, taken by default.</h2>
+        <p class="body-text">Requests are placed with the least-cost model that clears your quality bar<span class="note-ref" data-note="4">⁴</span>; the savings accrue line by line, stated against the frontier price.</p>
+      </div>
+      <div class="exhibit">
+        <div class="exhibit-cap"><span>Exhibit D — Route ledger · recent placements</span><span>June</span></div>
+        <div class="exhibit-body" style="padding:0">
+          <table class="ledger-table">
+            <thead><tr><th>Task</th><th>Placed with</th><th>Saving</th></tr></thead>
+            <tbody>
+              <tr><td>Classify support ticket</td><td>haiku</td><td class="fig">(92%)</td></tr>
+              <tr><td>Refactor payment hook</td><td>4.1-mini</td><td class="fig">(72%)</td></tr>
+              <tr><td>Summarize vendor doc</td><td>flash-lite</td><td class="fig">(88%)</td></tr>
+              <tr><td>Analyze 10-K filing</td><td>gemini-pro</td><td class="fig">(44%)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · schedule of operations -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Part III <b>/ Schedule of Operations</b></span>
+      <h2 class="rv">One endpoint, in the ordinary course of business.</h2>
+    </div>
+    <div class="schematic rv">
+      <svg viewBox="0 0 880 210" aria-label="Request flows from your application through policy check to an approved route, recorded in the ledger">
+        <defs><marker id="fa" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L8 4L0 8z" fill="#514B41"/></marker></defs>
+        <g font-family="Archivo,sans-serif" font-size="11" letter-spacing=".08em">
+          <rect x="16" y="70" width="150" height="54" fill="none" stroke="#1A1815"/>
+          <text x="91" y="94" text-anchor="middle" fill="#1A1815" font-size="13" font-family="Newsreader,serif">Your application</text>
+          <text x="91" y="112" text-anchor="middle" fill="#8B8272" font-size="9.5">OPENAI SDK · UNCHANGED</text>
+          <path d="M166 97 H 236" stroke="#514B41" stroke-width="1" marker-end="url(#fa)"/>
+          <rect x="240" y="42" width="220" height="110" fill="none" stroke="#1A1815" stroke-width="1.5"/>
+          <text x="350" y="68" text-anchor="middle" fill="#1A1815" font-size="15" font-family="Newsreader,serif">Spillway</text>
+          <text x="350" y="86" text-anchor="middle" fill="#8B8272" font-size="9.5">POLICY CHECK · ORG → TEAM → KEY</text>
+          <text x="350" y="106" text-anchor="middle" fill="#0066CC" font-size="10" font-family="ui-monospace,monospace">base_url = api.spillway.dev/v1</text>
+          <text x="350" y="130" text-anchor="middle" fill="#8B8272" font-size="9.5">METERED · JUDGED · RECORDED ⁵</text>
+          <path d="M460 80 H 540" stroke="#514B41" stroke-width="1" marker-end="url(#fa)"/>
+          <text x="500" y="70" text-anchor="middle" fill="#8B8272" font-size="9">APPROVED</text>
+          <rect x="544" y="56" width="150" height="48" fill="none" stroke="#1A1815"/>
+          <text x="619" y="84" text-anchor="middle" fill="#1A1815" font-size="12" font-family="Newsreader,serif">Every provider</text>
+          <path d="M460 120 C 500 120, 510 150, 540 150" stroke="#A3341F" stroke-width="1" stroke-dasharray="3 4" marker-end="url(#fa)"/>
+          <text x="560" y="154" fill="#A3341F" font-size="10" font-family="Newsreader,serif" font-style="italic">refused — (nil) incurred ¹</text>
+          <path d="M694 80 H 750" stroke="#514B41" stroke-width="1" marker-end="url(#fa)"/>
+          <rect x="754" y="56" width="112" height="48" fill="none" stroke="#1A1815"/>
+          <text x="810" y="78" text-anchor="middle" fill="#1A1815" font-size="12" font-family="Newsreader,serif">The ledger</text>
+          <text x="810" y="94" text-anchor="middle" fill="#8B8272" font-size="9">CHARGEBACK ⁶</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · notes -->
+<section class="sec stmt-band" id="notes">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Part IV <b>/ Notes to the Statement</b></span>
+      <h2 class="rv">Notes and basis of preparation.</h2>
+    </div>
+    <div class="notes rv">
+      <div class="note" id="note-1"><b>¹</b> Budget checks evaluate at org → team → key before the upstream call. A blocked request receives HTTP 402 and never reaches the provider; the amount stated in red is the spend that would otherwise have been incurred.</div>
+      <div class="note" id="note-2"><b>²</b> Approval chains support quorums (all / any / N), time-boxed delegation, and expiry. Decisions are recorded with approver identity and cryptographic reference in the audit log.</div>
+      <div class="note" id="note-3"><b>³</b> Anomaly baselines are computed per scope from weekday-matched history; variances are scored and, where enabled, the offending key is suspended automatically pending review.</div>
+      <div class="note" id="note-4"><b>⁴</b> Routing selects the least-cost model meeting the configured quality threshold; savings are stated against the frontier-model price for the same request.</div>
+      <div class="note"><b>⁵</b> Tenant isolation is enforced with row-level security in the database. Provider keys are sealed with AES-256-GCM; virtual keys are hashed and shown once.</div>
+      <div class="note"><b>⁶</b> Request bodies are retained only with explicit opt-in, subject to per-organization retention windows. Chargeback and audit exports are available on the Governance tier. SOC 2 examination in progress.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · schedule of fees -->
+<section class="sec" id="fees">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Part V <b>/ Schedule of Fees</b></span>
+      <h2 class="rv">Terms of subscription.</h2>
+    </div>
+    <div class="rates rv">
+      <div class="rate"><span class="nm">Free</span><span class="price fig">$0<span> /mo</span></span><span class="inc">One endpoint · budgets &amp; alerts · 7-day history</span><span class="act"><a href="#subscribe">Subscribe</a></span></div>
+      <div class="rate"><span class="nm">Pro</span><span class="price fig">$49<span> /mo</span></span><span class="inc">Routing policies · anomaly detection · 90-day traces</span><span class="act"><a href="#subscribe">Subscribe</a></span></div>
+      <div class="rate rec"><span class="nm">Governance</span><span class="price fig">$299<span> /mo</span></span><span class="inc">Approval workflows · hard enforcement · chargeback &amp; audit exports</span><span class="act"><a href="#subscribe">Subscribe</a></span></div>
+      <div class="rate"><span class="nm">Enterprise</span><span class="price fig">On application</span><span class="inc">In-region or on-premises · SSO / SAML / SCIM · SLA</span><span class="act"><a href="#subscribe">Enquire</a></span></div>
+      <div class="rates-baseline">Fees are flat-rate. Spillway takes no percentage of governed spend.</div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · attestation -->
+<section class="sec" style="padding-top:0">
+  <div class="wrap ruled">
+    <div class="sec-head">
+      <span class="folio rv">Part VI <b>/ Attestations</b></span>
+    </div>
+    <div class="attest">
+      <div class="att rv">
+        <p class="q">“We cut our model bill nearly in half in an afternoon, and our evals didn't move. The routing paid for the governance before the governance saved us.”</p>
+        <div class="sig-rule"></div>
+        <div class="nm">Priya Nair</div>
+        <div class="rl">Head of Platform · Series-B fintech</div>
+      </div>
+      <div class="att rv">
+        <p class="q">“For the first time, AI spend closes like cloud spend — budgets by team, approvals over threshold, and an audit trail I can hand to our accountants.”</p>
+        <div class="sig-rule"></div>
+        <div class="nm">Daniel Koh</div>
+        <div class="rl">VP Finance · AI-native SaaS</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · subscription line -->
+<section class="sec stmt-band" id="subscribe">
+  <div class="wrap ruled" style="text-align:center">
+    <span class="folio rv">In witness whereof</span>
+    <h2 class="rv" style="margin:16px auto 26px;max-width:22ch">Enter your address for service, and begin.</h2>
+    <div class="coupon rv" style="margin:0 auto">
+      <div class="coupon-inner">
+        <input type="email" placeholder="Work email" aria-label="Work email" />
+        <button class="btn" id="fileBtn">File →</button>
+      </div>
+    </div>
+    <p class="rv" style="font-family:var(--grot);font-size:12px;color:var(--ink-3);margin-top:14px">No credit card · OpenAI-compatible · five-minute setup</p>
+  </div>
+</section>
+
+<!-- 10 · colophon -->
+<footer class="colophon">
+  <span class="watermark" aria-hidden="true">Spillway</span>
+  <div class="wrap">
+    <div class="col-cols">
+      <div>
+        <h4>Colophon</h4>
+        <p class="setline">Set in Newsreader and Archivo.<br />Figures tabular and lining throughout.</p>
+      </div>
+      <div><h4>Product</h4><ul><li><a href="#instruments">Instruments</a></li><li><a href="#fees">Fees</a></li><li><a href="#">Console</a></li></ul></div>
+      <div><h4>Developers</h4><ul><li><a href="#">Documentation</a></li><li><a href="#">API reference</a></li><li><a href="#">Status</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="#">Privacy</a></li><li><a href="#">Terms</a></li><li><a href="#">Security</a></li></ul></div>
+    </div>
+    <div class="col-legal"><span>© 2026 Spillway Labs, Inc. Alpha software — figures illustrative.</span><span>END OF STATEMENT</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // reveals
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.14 });
+  document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+
+  // exhibit A meters
+  var exA = document.getElementById('ex-a');
+  if (exA) new IntersectionObserver(function (es, o) { if (es[0].isIntersecting) { exA.classList.add('in-view'); o.disconnect(); } }, { threshold: 0.5 }).observe(exA);
+
+  // hero ledger: lines type themselves in; blocked lines post in red parentheses
+  var tbody = document.querySelector('#ledger tbody');
+  var blockedTotal = 1204.0;
+  var totalEl = document.getElementById('blockedTotal');
+  var LINES = [
+    ['09:41:22', 'prod-chat', 'claude-haiku', '$0.0041', false],
+    ['09:41:19', 'batch-embed', '—', '($3.1200)', true],
+    ['09:41:18', 'growth-agent', 'gpt-4.1-mini', '$0.0164', false],
+    ['09:41:16', 'support-bot', 'flash-lite', '$0.0009', false],
+    ['09:41:12', 'prod-chat', 'claude-haiku', '$0.0038', false],
+    ['09:41:07', 'batch-embed', '—', '($2.8400)', true],
+    ['09:41:03', 'analytics', 'gemini-pro', '$0.0921', false],
+  ];
+  var MAX = 6;
+  function addRow(line, instant) {
+    var tr = document.createElement('tr');
+    if (!instant && !reduce) tr.className = 'new';
+    tr.innerHTML =
+      '<td class="muted">' + line[0] + '</td><td>' + line[1] + '</td><td class="muted">' + line[2] + '</td>' +
+      '<td class="' + (line[4] ? 'red' : '') + '">' + line[3] + (line[4] ? '<span class="note-ref">¹</span>' : '') + '</td>';
+    tbody.insertBefore(tr, tbody.firstChild);
+    while (tbody.children.length > MAX) tbody.removeChild(tbody.lastChild);
+    if (line[4]) {
+      blockedTotal += Math.abs(parseFloat(line[3].replace(/[($)]/g, '')));
+      totalEl.textContent = '($' + blockedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ')';
+    }
+  }
+  LINES.slice(0, MAX).reverse().forEach(function (l) { addRow(l, true); });
+  if (!reduce) {
+    var i = 0;
+    setInterval(function () { addRow(LINES[i++ % LINES.length], false); }, 2400);
+  }
+
+  // the double-rule draws itself
+  var r1 = document.getElementById('rule1'), r2 = document.getElementById('rule2');
+  if (!reduce && r1) {
+    r1.style.transform = 'scaleX(0)'; r2.style.transform = 'scaleX(0)';
+    setTimeout(function () {
+      r1.style.transition = 'transform 700ms cubic-bezier(.16,1,.3,1)';
+      r2.style.transition = 'transform 700ms cubic-bezier(.16,1,.3,1) 180ms';
+      r1.style.transform = 'scaleX(1)'; r2.style.transform = 'scaleX(1)';
+    }, 600);
+  }
+
+  // stats tally
+  function tally(el) {
+    var raw = el.getAttribute('data-fig');
+    if (reduce) { el.innerHTML = raw.indexOf('(') === 0 ? '<span class="red">(' + '$' + raw.replace(/[()]/g, '') + ')</span>' : raw; return; }
+    var num = parseFloat(raw.replace(/[(),]/g, ''));
+    var red = raw.indexOf('(') === 0;
+    var start = null;
+    function fmt(v) {
+      var s = v.toLocaleString('en-US', { minimumFractionDigits: red ? 2 : 0, maximumFractionDigits: red ? 2 : 0 });
+      return red ? '<span class="red">($' + s + ')</span>' : s;
+    }
+    function frame(t) {
+      if (start === null) start = t;
+      var p = Math.min(1, (t - start) / 1100);
+      el.innerHTML = fmt(Math.round((1 - Math.pow(1 - p, 3)) * num * (red ? 100 : 1)) / (red ? 100 : 1));
+      if (p < 1) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+  var sio = new IntersectionObserver(function (es) {
+    es.forEach(function (e) { if (e.isIntersecting) { tally(e.target); sio.unobserve(e.target); } });
+  }, { threshold: 0.6 });
+  document.querySelectorAll('[data-fig]').forEach(function (el) { sio.observe(el); });
+
+  // approval resolves
+  var appr = document.getElementById('approver');
+  if (appr) new IntersectionObserver(function (es, o) {
+    if (!es[0].isIntersecting) return;
+    o.disconnect();
+    setTimeout(function () {
+      appr.textContent = 'cfo@acme · 09:51 UTC ✓';
+      appr.style.color = 'var(--ink)';
+    }, reduce ? 0 : 1600);
+  }, { threshold: 0.6 }).observe(appr);
+
+  // footnote refs scroll to notes
+  document.addEventListener('click', function (e) {
+    var ref = e.target.closest('.note-ref');
+    if (!ref) return;
+    var n = ref.getAttribute('data-note');
+    var el = n && document.getElementById('note-' + n);
+    if (el) el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  });
+
+  // coupon stamp
+  var fileBtn = document.getElementById('fileBtn');
+  if (fileBtn) fileBtn.addEventListener('click', function (e) {
+    e.preventDefault();
+    fileBtn.textContent = 'FILED ✓';
+    fileBtn.style.background = 'var(--blue)';
+    fileBtn.style.color = '#fff';
+    fileBtn.style.transform = 'rotate(-2deg)';
+  });
+})();
+</script>
+</body>
+</html>

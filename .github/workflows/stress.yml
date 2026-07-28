@@ -1,0 +1,55 @@
+# Nightly real-socket stress run (tools/stress). In CI the harness connects to the postgres
+# service container below (test/helpers/db.ts takes the TEST_DATABASE_URL path when CI is set —
+# it does NOT start testcontainers, so the service + migrate steps here are load-bearing). The
+# db-outage chaos scenario needs a docker-pausable container and self-skips in CI; it still runs
+# in local `pnpm stress`. The suite is ~30 invariant checks over load, disconnect storms, SSE,
+# budget races, scheduler lease contention, and (locally) a DB-freeze chaos scenario.
+name: stress
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # daily, 09:17 UTC
+  workflow_dispatch:
+
+jobs:
+  stress:
+    name: real-socket stress + chaos
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16.3-alpine
+        env:
+          POSTGRES_USER: spillway
+          POSTGRES_PASSWORD: spillway
+          POSTGRES_DB: spillway_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      CI: 'true'
+      NODE_ENV: test
+      # least-privilege role URLs (matches ci.yml integration job)
+      DATABASE_URL: postgres://spillway_app:spillway_app@localhost:5432/spillway_test
+      DATABASE_URL_JOBS: postgres://spillway_jobs:spillway_jobs@localhost:5432/spillway_test
+      # migrate as the superuser (grants + RLS need owner privileges); targets the CI service DB
+      MIGRATION_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      TEST_DATABASE_URL: postgres://spillway:spillway@localhost:5432/spillway_test
+      POSTGRES_IMAGE: postgres:16.3-alpine
+      SPILLWAY_ENC_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= # 32 zero-bytes, base64; test only
+      PORT: '3001'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: 'pnpm' }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:packages
+      # roles must exist before the grants migration (0001) — CI has no initdb hook
+      - run: psql "$MIGRATION_DATABASE_URL" -f apps/server/src/db/migrations/init-roles.sql
+      - run: pnpm db:migrate
+      - run: pnpm stress

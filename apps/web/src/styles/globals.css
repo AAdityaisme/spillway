@@ -1,0 +1,353 @@
+/* apps/web/src/styles/globals.css — Spillway dashboard design tokens.
+   The product register from the shipped homepage (apps/landing/next — "the spillway
+   line", light register): paper/ink, one blue, semantic amber for caught/blocked
+   states, pass green for ok, JetBrains Mono tabular numerals. Structure/UX per
+   bible 09-frontend; visual language shared with the homepage so console +
+   marketing read as one product. */
+@import 'tailwindcss';
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/jetbrains-mono-var.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('/fonts/instrument-serif-normal.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('/fonts/instrument-serif-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+:root {
+  /* surfaces */
+  --paper: #f8f9fb;
+  --paper-warm: #f4f6f9;
+  --card: #ffffff;
+  --line: rgba(11, 18, 32, 0.08);
+  --line-strong: rgba(11, 18, 32, 0.16);
+
+  /* ink */
+  --ink: #0b1220;
+  --ink-mut: #5a6478;
+  --ink-read: #46536b;
+
+  /* the one blue */
+  --blue: #0066cc;
+  --blue-hover: #1f7ae0;
+  --blue-signal: #2e9bff;
+  --blue-deep: #003d80;
+  --blue-soft: rgba(0, 102, 204, 0.08);
+
+  /* semantic: amber = caught/blocked/warning · pass = ok · danger = destructive/error */
+  --amber: #e8930c;
+  --amber-soft: rgba(232, 147, 12, 0.1);
+  --pass: #0f9d6e;
+  --pass-soft: rgba(15, 157, 110, 0.1);
+  --danger: #d92d20;
+  --danger-soft: rgba(217, 45, 32, 0.08);
+
+  /* type */
+  --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --serif: 'Instrument Serif', 'Times New Roman', serif;
+
+  /* the spillway band (homepage motif): faint 12° blue wash for brand surfaces */
+  --band-tint: rgba(0, 102, 204, 0.085);
+
+  /* radius: 14 cards · 10 buttons/inputs · pill chips */
+  --radius-card: 14px;
+  --radius-btn: 10px;
+  --radius-pill: 9999px;
+
+  /* elevation: triple-layer ink-tinted (light cards); pop for menus/drawers */
+  --shadow-card:
+    0 0 0 1px rgba(11, 18, 32, 0.05), 0 8px 24px rgba(11, 18, 32, 0.06),
+    0 1px 2px rgba(11, 18, 32, 0.04);
+  --shadow-pop:
+    0 0 0 1px rgba(11, 18, 32, 0.06), 0 12px 40px rgba(11, 18, 32, 0.14),
+    0 2px 6px rgba(11, 18, 32, 0.06);
+
+  /* motion */
+  --ease-big: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-micro: cubic-bezier(0.4, 0.36, 0, 1);
+
+  /* legacy aliases (pre-register scaffold code; remove once nothing references them) */
+  --color-primary: var(--blue);
+  --color-ink: var(--ink);
+  --color-ink-muted-80: var(--ink-read);
+  --color-ink-muted-48: var(--ink-mut);
+  --color-border: var(--line);
+  --color-hairline: var(--line);
+  --color-canvas: var(--paper);
+  --color-canvas-parchment: var(--paper-warm);
+  --color-surface-sidebar: var(--paper-warm);
+  --color-success: var(--pass);
+  --color-warning: var(--amber);
+  --color-danger: var(--danger);
+  --color-parchment: var(--paper-warm);
+  --radius-sm: 8px;
+  --radius-md: var(--radius-btn);
+  --radius-lg: var(--radius-card);
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 17px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+}
+
+/* Tailwind v4 theme — tokens as utilities (bg-paper, text-ink, border-line, font-mono…). */
+@theme {
+  --color-paper: var(--paper);
+  --color-paper-warm: var(--paper-warm);
+  --color-card: var(--card);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-mut: var(--ink-mut);
+  --color-ink-read: var(--ink-read);
+  --color-blue: var(--blue);
+  --color-blue-hover: var(--blue-hover);
+  --color-blue-signal: var(--blue-signal);
+  --color-blue-deep: var(--blue-deep);
+  --color-blue-soft: var(--blue-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  --color-pass: var(--pass);
+  --color-pass-soft: var(--pass-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+  --radius-card: var(--radius-card);
+  --radius-btn: var(--radius-btn);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(0, 102, 204, 0.18);
+}
+
+/* Every number in a spend product is tabular mono — the brand. */
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Mono eyebrow/label grammar shared with the homepage. */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-mut);
+}
+
+/* Focus: double ring keyed to paper, matches homepage buttons. */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--paper),
+    0 0 0 4px var(--blue);
+}
+
+/* Skeleton shimmer for loading states (bible §5: skeletons, never spinners, on page load). */
+@keyframes skeleton-sheen {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(
+    100deg,
+    rgba(11, 18, 32, 0.05) 40%,
+    rgba(11, 18, 32, 0.09) 50%,
+    rgba(11, 18, 32, 0.05) 60%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-sheen 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--pass);
+  animation: live-pulse 2.4s ease-in-out infinite;
+}
+
+/* Drawer/dialog motion (Radix data-state hooks). */
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes drawer-in-left {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes dialog-in {
+  from {
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .live-dot {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Brand surfaces (connect gate, empty states): the homepage's serif voice + band + dot grid. */
+.brand-serif {
+  font-family: var(--serif);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.spillway-band {
+  position: relative;
+  overflow: hidden;
+}
+.spillway-band::before {
+  content: '';
+  position: absolute;
+  inset: -40% -10%;
+  background: linear-gradient(
+    12deg,
+    transparent 44%,
+    var(--band-tint) 49%,
+    var(--band-tint) 51%,
+    transparent 56%
+  );
+  pointer-events: none;
+}
+.dot-grid {
+  background-image: radial-gradient(rgba(11, 18, 32, 0.09) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+/* Interactive cards lift on hover — transform+opacity only, micro easing. */
+.card-lift {
+  transition:
+    transform 160ms var(--ease-micro),
+    box-shadow 160ms var(--ease-micro);
+}
+.card-lift:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 0 0 1px rgba(11, 18, 32, 0.06),
+    0 12px 32px rgba(11, 18, 32, 0.09),
+    0 2px 4px rgba(11, 18, 32, 0.05);
+}
+
+/* Live-feed rows enter once: small rise + fade (marketing parallax stays on the homepage). */
+@keyframes row-in {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.row-in {
+  animation: row-in 260ms var(--ease-big) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-in {
+    animation: none;
+  }
+  .card-lift,
+  .card-lift:hover {
+    transform: none;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--card);
+  border-radius: var(--radius-btn);
+  box-shadow: var(--shadow-pop);
+}
+.skip-link:focus {
+  left: 12px;
+  top: 12px;
+}

@@ -1,0 +1,12 @@
+-- Model-capability catalog (15-routing-engine §5.1). The `require_capabilities` hard-filter needs a
+-- per-model capability set to filter candidates against (analogous to OpenRouter `supported_parameters`).
+-- The filter logic + validation already ship in resolve.ts/validate.ts, but until a catalog is
+-- POPULATED the filter fails open (best-effort forwarding) — nothing set policy.capabilities. This
+-- column IS that catalog: a text[] of capability tokens (subset of tools/response_format/json_schema/
+-- seed/reasoning/vision/stream) per (provider, model), populated by the pricing-sync job + seed from
+-- the static capability map. NULL = unknown (row excluded from the loaded catalog); once any row is
+-- non-NULL the hard filter engages and a candidate whose model is absent/uncapable is dropped.
+--
+-- Global reference table (no org_id, no RLS) — the existing table-level SELECT grant to the app role
+-- and INSERT/UPDATE to spillway_jobs cover this new column automatically.
+ALTER TABLE model_prices ADD COLUMN capabilities text[];

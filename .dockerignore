@@ -1,0 +1,23 @@
+# .dockerignore
+.git
+.gitignore
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+dist
+**/dist
+*.log
+.DS_Store
+coverage
+.nyc_output
+apps/web/.vite
+tools/seed
+test
+**/*.test.ts
+**/*.spec.ts
+docs
+bible
+*.md
+!apps/server/src/db/migrations

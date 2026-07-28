@@ -1,0 +1,13 @@
+# Founder creative direction — preserved verbatim (ADR-019j)
+apps/landing/
+docs/design/
+
+# Generated / vendored
+**/dist/
+**/node_modules/
+coverage/
+apps/server/src/db/migrations/
+apps/docs/reference/
+docs/bible/
+docs/research/
+pnpm-lock.yaml

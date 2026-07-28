@@ -1,0 +1,37 @@
+# Gitleaks config (10-security §6 / M0 exit gate: "old credentials confirmed dead").
+# Inherit gitleaks' built-in rule set (cloud keys, tokens, private keys) and add Spillway's own
+# credential shapes so a leaked virtual/admin key is caught before it reaches history.
+title = "Spillway gitleaks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "spillway-virtual-key"
+description = "Spillway virtual key (mk-live-…)"
+regex = '''mk-live-[A-Za-z0-9_-]{16,}'''
+tags = ["spillway", "credential"]
+
+[[rules]]
+id = "spillway-admin-api-key"
+description = "Spillway admin API key (mka-…)"
+regex = '''mka-[A-Za-z0-9_-]{16,}'''
+tags = ["spillway", "credential"]
+
+[allowlist]
+description = "Test fixtures, examples, and generated dev material carry only fake/local credentials."
+paths = [
+  '''.*\.test\.ts$''',
+  '''.*/test-utils/.*''',
+  '''apps/server/test/.*''',
+  '''tools/(seed|dev-token)\..*''',
+  '''\.env\.example$''',
+  '''\.dev-auth-key\.json$''',
+  '''pnpm-lock\.yaml$''',
+]
+# The mk-live-/mka- prefixes appear as literal strings in code that GENERATES or DOCUMENTS them.
+regexes = [
+  '''mk-live-…''',
+  '''mka-…''',
+  '''mk-live-<''',
+]

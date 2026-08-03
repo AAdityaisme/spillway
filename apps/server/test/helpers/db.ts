@@ -7,7 +7,7 @@ import type { DatabaseClient } from '../../src/db/client.js';
 import * as schema from '../../src/db/schema.js';
 
 /** Single pinned image — shared by testcontainers (local) and CI service container. */
-export const POSTGRES_IMAGE = 'postgres:16.3-alpine';
+export const POSTGRES_IMAGE = 'postgres:18.4-alpine';
 
 const APP_ROLE_SQL = `
 DO $$ BEGIN

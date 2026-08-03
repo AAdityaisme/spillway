@@ -3,7 +3,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import postgres, { type Sql } from 'postgres';
 import { runMigrations } from './migrate.js';
 
-const POSTGRES_IMAGE = 'postgres:16.3-alpine';
+const POSTGRES_IMAGE = 'postgres:18.4-alpine';
 const ENV_KEYS = ['DATABASE_URL', 'DATABASE_URL_JOBS', 'MIGRATION_DATABASE_URL'] as const;
 const previous = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 

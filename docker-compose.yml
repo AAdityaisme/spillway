@@ -3,7 +3,7 @@ version: '3.9'
 
 services:
   postgres:
-    image: postgres:16.3-alpine # pinned minor; bump only in a deliberate PR
+    image: postgres:18.4-alpine # pinned minor; bump only in a deliberate PR
     container_name: spillway-pg
     environment:
       POSTGRES_USER: spillway

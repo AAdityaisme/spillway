@@ -68,7 +68,12 @@ jobs:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
       - name: trivy scan (block on CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@0.24.0
+        # SHA-pinned, not tagged. On 2026-03-19 an attacker force-pushed 76 of 77 tags in this
+        # action to credential-stealing malware (GHSA-69fq-xp46-6x23) — `@0.24.0` was one of
+        # them, so a tag reference here was a live supply-chain hole. This repo never fetched it
+        # (first commit 2026-06-22, three months after the window closed, and this workflow has
+        # never run), but a tag can be moved again. ed142fd == v0.36.0. Bump deliberately.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           image-ref: spillway:ci
           severity: 'CRITICAL,HIGH'
@@ -118,6 +123,9 @@ jobs:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Same SHA pin as deploy.yml, and for the same reason: this job has FLY_API_TOKEN in
+      # env, so a compromised master would run with a live deploy token in scope.
+      # ed8efb3 == tag 1.6. Bump deliberately.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
       - name: deploy (bluegreen — health-checked, auto-rolls-back on failure)
         run: flyctl deploy --strategy=bluegreen --wait-timeout=300

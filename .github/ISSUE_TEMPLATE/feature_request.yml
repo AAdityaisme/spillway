@@ -1,0 +1,61 @@
+name: Feature request
+description: Propose a capability or a change in behavior.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Architecture here is settled by ADR. Proposals that cut against an existing
+        decision need to argue against that decision, not around it — so please say
+        which one you think should change.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What can't you do today? Describe the situation, not the solution — the
+        best fix is often not the one first imagined.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should happen instead, concretely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including doing nothing, or solving it outside the gateway.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Data plane (/v1/* gateway, streaming, providers)
+        - Budgets and enforcement
+        - Approvals
+        - Anomaly detection / alerts
+        - Reconciliation / ledger / cost
+        - Control plane (/api/*)
+        - Console (apps/web)
+        - Auth (WorkOS, virtual keys)
+        - Database / migrations / RLS
+        - Build, CI, or deploy
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: breaking
+    attributes:
+      label: Compatibility
+      options:
+        - label: This would change existing API behavior or the data model.
+        - label: I'm willing to open a PR for this.

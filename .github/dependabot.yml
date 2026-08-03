@@ -1,0 +1,52 @@
+# WHY THIS EXISTS: Ring 0 (`pnpm audit --prod --audit-level=high` in ci.yml) is a
+# BLOCKING gate, and it is evaluated against the advisory database as it stands at the
+# moment CI runs — not against anything in this repo. So a new advisory published against
+# an unchanged dependency turns `main` red on the next unrelated push. That happened
+# repeatedly (brace-expansion, shell-quote, fast-uri, find-my-way, and @fastify/static on
+# 2026-08-03) and each time it was discovered by a red build rather than by an alert.
+#
+# The gate is correct and stays blocking — a HIGH in the production tree should stop a
+# merge. What was missing is the other half: getting the fix proposed automatically, so
+# the advisory arrives as a PR instead of as a broken main.
+#
+# Requires "Dependabot alerts" and "Dependabot security updates" enabled in repo settings;
+# this file governs the scheduled version updates and the grouping.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+      include: scope
+    # One PR per group instead of a swarm. Security updates ignore grouping and always
+    # open their own PR, which is the behavior we want — they should not wait for Monday.
+    groups:
+      production:
+        dependency-type: production
+        update-types: [minor, patch]
+      development:
+        dependency-type: development
+        update-types: [minor, patch]
+    # Majors land as individual PRs — they need a human reading a changelog
+    # (@fastify/static 9 → 10 changed the setHeaders signature).
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      actions:
+        patterns: ['*']

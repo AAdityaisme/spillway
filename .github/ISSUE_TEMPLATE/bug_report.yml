@@ -1,0 +1,73 @@
+name: Bug report
+description: Something the gateway does that it shouldn't, or doesn't do that it should.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not report a security vulnerability here.** Use the Security tab →
+        Report a vulnerability. See [SECURITY.md](../blob/main/SECURITY.md).
+
+        Never paste real provider keys, connection strings, or session tokens.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you observed, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: |
+        Smallest set of steps that shows it. A `curl` against `/v1/*` with the keys
+        redacted is ideal.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Data plane (/v1/* gateway, streaming, providers)
+        - Budgets and enforcement
+        - Approvals
+        - Anomaly detection / alerts
+        - Reconciliation / ledger / cost
+        - Control plane (/api/*)
+        - Console (apps/web)
+        - Auth (WorkOS, virtual keys)
+        - Database / migrations / RLS
+        - Build, CI, or deploy
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Relevant log lines or the error response body. Redact secrets.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: The commit SHA you're running. `git rev-parse --short HEAD`
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: Node version, OS, Postgres version, and how you're running it.
+      placeholder: 'Node 22.4, macOS 15, Postgres 16 via docker compose'
+    validations:
+      required: true

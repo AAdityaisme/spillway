@@ -10,7 +10,7 @@
   "dependencies": {
     "@bufbuild/cel": "0.6.0",
     "@fastify/cors": "^10.0.2",
-    "@fastify/static": "^9.3.0",
+    "@fastify/static": "^10.1.2",
     "@spillway/certifier": "workspace:*",
     "@spillway/pricing": "workspace:*",
     "@spillway/shared": "workspace:*",

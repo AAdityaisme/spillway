@@ -15,9 +15,9 @@ jobs:
     name: typecheck · lint · unit · build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # reads packageManager from package.json (pnpm 10)
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # reads packageManager from package.json (pnpm 10)
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       # @spillway/shared + @spillway/pricing resolve to their dist/ (built output), so they
@@ -37,9 +37,9 @@ jobs:
     name: Ring 0 · lockfile integrity + dep audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile --ignore-scripts # HARD integrity gate — a divergent lockfile dies here
       # Dependency audit — BLOCKING on a production HIGH/CRITICAL advisory (part-3/05 Ring 0). The
@@ -80,9 +80,9 @@ jobs:
       # WorkOS auth vars (ADR-023) are optional in test — no auth runs until M1.
       PORT: '3001'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       # @spillway/shared + @spillway/pricing resolve to their dist/ (built output), so they

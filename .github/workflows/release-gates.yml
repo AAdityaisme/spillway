@@ -20,10 +20,10 @@ jobs:
     name: Ring 1 · Docker build + healthz + non-root probe
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           load: true
@@ -53,9 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [image-smoke]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
         with: { context: ., load: true, tags: 'spillway:ci' }
       - name: SBOM (CycloneDX)
         uses: anchore/sbom-action@v0
@@ -63,7 +63,7 @@ jobs:
           image: spillway:ci
           format: cyclonedx-json
           output-file: sbom.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
@@ -88,9 +88,9 @@ jobs:
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
@@ -106,7 +106,7 @@ jobs:
     needs: [migration-drill]
     # Requires STAGING_BASE_URL to point at the staging app.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: grafana/setup-k6-action@v1
       - name: k6 SLO run against staging
         env:
@@ -122,7 +122,7 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Same SHA pin as deploy.yml, and for the same reason: this job has FLY_API_TOKEN in
       # env, so a compromised master would run with a live deploy token in scope.
       # ed8efb3 == tag 1.6. Bump deliberately.

@@ -18,7 +18,7 @@ jobs:
     # Blocks the build if a Spillway/cloud credential shape reaches the tree (10-security §6; M0 gate).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: gitleaks
         run: |
           VER=8.21.2
@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: osv-scanner
         run: |
           VER=1.9.2

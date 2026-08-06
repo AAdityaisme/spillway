@@ -8,12 +8,13 @@
   "engines": {
     "node": ">=22"
   },
+  "_comment_overrides": "Transitive security floors. Selectors are OPEN-ENDED on purpose: a closed range like 'fast-uri@>=3.0.0 <3.1.4' stops matching the moment the lockfile reaches 3.1.4, so when the advisory floor later moved to 3.1.5 the override went inert and Ring 0 went red with 'security_update_not_possible' — the override was capping the fix it existed to deliver. Anchor the selector at the major line and put the floor in the value. brace-expansion keeps a >=4.0.0 selector because 1.x/2.x are not vulnerable and forcing 5.x on them breaks legacy minimatch.",
   "pnpm": {
     "overrides": {
-      "brace-expansion@>=3.0.0 <5.0.7": "^5.0.7",
-      "shell-quote@<=1.8.4": "^1.9.0",
-      "fast-uri@>=3.0.0 <3.1.4": "^3.1.4",
-      "find-my-way@<=9.6.0": "^9.7.0"
+      "brace-expansion@>=4.0.0": "^5.0.9",
+      "shell-quote@>=1.0.0": "^1.9.0",
+      "fast-uri@>=3.0.0": "^3.1.5",
+      "find-my-way@>=9.0.0": "^9.7.0"
     }
   },
   "scripts": {

@@ -11,6 +11,8 @@ import { staticPlugin } from './static.js';
 import { dataPlanePlugin } from './data-plane/plugin.js';
 import { controlPlanePlugin } from './control-plane/plugin.js';
 import { actionLinksPlugin } from './action-links.js';
+import { authKitRoutes } from './auth/authkit-routes.js';
+import type { AuthKit } from './auth/authkit.js';
 import { addSecurityHeaders } from './security-headers.js';
 
 /**
@@ -54,6 +56,8 @@ export interface AppOptions {
   auth?: { jwks?: JWTVerifyGetKey; verifyOpts?: VerifyOptions };
   /** Test seam (05 §11): injectable undici dispatcher for the data-plane upstream fetch. */
   dispatcher?: Dispatcher;
+  /** Test seam (M4-auth): injectable AuthKit so the login flow is drivable without WorkOS. */
+  authKit?: AuthKit;
 }
 
 export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> {
@@ -89,6 +93,9 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   // Signed action links (§18 §6) — HMAC-token-authed, no session. Registered BEFORE the /api control
   // plane so its /api/v1/approval-actions route isn't shadowed by the control plane's /api not-found scope.
   if (opts.db) await fastify.register(actionLinksPlugin, { db: opts.db, config: opts.config });
+  // AuthKit hosted login (M4-auth). Registered BEFORE the /api control plane and outside its
+  // auth hook — a logged-out browser has to reach these to get a session in the first place.
+  await fastify.register(authKitRoutes, { config: opts.config, authKit: opts.authKit });
   await fastify.register(dataPlanePlugin, {
     prefix: '/v1',
     config: opts.config,

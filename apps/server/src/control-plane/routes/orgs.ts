@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
 import { createOrgSchema, SpillwayError } from '@spillway/shared';
 import type { DatabaseClient } from '../../db/client.js';
-import { orgs, orgMembers, auditLog, modelAliases } from '../../db/schema.js';
+import { orgs, orgMembers, auditLog, modelAliases, users } from '../../db/schema.js';
 import { requireUser } from '../../auth/workos-plugin.js';
 import { parse } from '../validate.js';
 
@@ -99,6 +99,25 @@ export const orgsRoutes: FastifyPluginAsync<OrgsDeps> = async (fastify, { db }) 
           { httpStatus: 429, details: { limit: MAX_ORGS_PER_USER } },
         );
       }
+
+      // The auth hook mirrors the WorkOS user into `users` FIRE-AND-FORGET (M25: a transient
+      // write failure must never 401 an otherwise-valid token). org_members.user_id is a NOT NULL
+      // FK to users.id, so on a brand-new user's FIRST request — which on the signup path is
+      // exactly this one — the membership insert below can beat the mirror and die on the FK,
+      // surfacing as a bogus "referenced entity does not exist". Load makes it MORE likely, so it
+      // reads like flake while actually being a broken signup.
+      //
+      // Making this transaction self-sufficient removes the ordering dependency entirely without
+      // giving up M25's availability property. Idempotent, and it never clobbers a mirrored
+      // profile with the token's (possibly staler) claims.
+      await tx
+        .insert(users)
+        .values({
+          id: user.sub,
+          email: user.email ?? `${user.sub}@users.workos`,
+          name: user.name ?? null,
+        })
+        .onConflictDoNothing({ target: users.id });
 
       const [created] = await tx
         .insert(orgs)

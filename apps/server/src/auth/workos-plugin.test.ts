@@ -40,6 +40,8 @@ function prodCfg(overrides: NodeJS.ProcessEnv = {}) {
     WORKOS_CLIENT_ID: 'client_prod',
     DASHBOARD_ORIGIN: 'https://app.example.com',
     METRICS_TOKEN: 'secret',
+    PUBLIC_URL: 'https://spillway.cloud', // M4-auth: required + https in prod (drives cookie Secure)
+    WORKOS_COOKIE_PASSWORD: 'c'.repeat(32), // M4-auth: required in prod
     ...overrides,
   });
 }

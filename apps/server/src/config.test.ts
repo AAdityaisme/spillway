@@ -18,6 +18,8 @@ const prodBase = {
   SPILLWAY_ACTION_TOKEN_SECRET: 'a'.repeat(64), // 64 hex chars
   DASHBOARD_ORIGIN: 'https://app.example.com',
   METRICS_TOKEN: 'tok',
+  PUBLIC_URL: 'https://spillway.cloud', // M4-auth: required + https in prod (drives cookie Secure)
+  WORKOS_COOKIE_PASSWORD: 'c'.repeat(32), // M4-auth: seals the AuthKit session cookie, ≥32 chars
 };
 
 describe('workosIssuer', () => {
@@ -51,10 +53,18 @@ describe('parseConfig — production boot invariants', () => {
     ['SPILLWAY_ACTION_TOKEN_SECRET'],
     ['DASHBOARD_ORIGIN'],
     ['METRICS_TOKEN'],
+    ['WORKOS_COOKIE_PASSWORD'],
+    ['PUBLIC_URL'],
   ] as const)('throws when %s is absent in production', (key) => {
     const env = { ...prodBase };
     delete (env as Record<string, string>)[key];
     expect(() => parseConfig(env)).toThrow();
+  });
+
+  // PUBLIC_URL drives the session cookie's Secure flag, so a plaintext value in production
+  // ships a session cookie readable off the wire.
+  it('throws when PUBLIC_URL is http in production', () => {
+    expect(() => parseConfig({ ...prodBase, PUBLIC_URL: 'http://spillway.cloud' })).toThrow();
   });
 
   it('throws when ENABLE_TEST_SEEDER is true in production (must NEVER be set in prod)', () => {

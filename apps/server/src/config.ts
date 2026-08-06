@@ -60,6 +60,13 @@ const schema = z
     // audience on every plan, so this stays opt-in: set it (usually to the client id) once the
     // WorkOS dashboard confirms the value, and every token missing/mismatching it 401s.
     WORKOS_JWT_AUD: z.string().min(1).optional(), // min(1): "" must NOT silently disable enforcement (red-team) — omit the var to opt out
+    // AuthKit hosted-login flow (M4-auth). The sealed session cookie is encrypted with this
+    // password by the WorkOS SDK, so it is a real secret: rotating it logs everyone out.
+    // 32 chars is the SDK's floor. Generate: openssl rand -base64 32
+    WORKOS_COOKIE_PASSWORD: z.string().min(32).optional(),
+    // Must match a redirect URI registered in the WorkOS dashboard EXACTLY, or the callback 400s.
+    // Defaults to PUBLIC_URL + /auth/callback so local dev needs no extra config.
+    WORKOS_REDIRECT_URI: z.string().url().optional(),
 
     // Encryption (ADR-014)
     SPILLWAY_ENC_KEY_V1: base64Bytes(32),
@@ -110,12 +117,27 @@ const schema = z
       const requiredInProd: Array<[keyof typeof cfg, string]> = [
         ['WORKOS_API_KEY', 'required in production (WorkOS AuthKit secret key)'],
         ['WORKOS_CLIENT_ID', 'required in production (WorkOS client id; JWKS issuer)'],
+        [
+          'WORKOS_COOKIE_PASSWORD',
+          'required in production (seals the AuthKit session cookie; ≥32 chars)',
+        ],
         ['SPILLWAY_ACTION_TOKEN_SECRET', 'required in production (approval action-link HMAC)'],
         ['DASHBOARD_ORIGIN', 'required in production (CORS allowed origin for the dashboard SPA)'],
         ['METRICS_TOKEN', 'required in production (gates GET /metrics)'],
       ];
       for (const [key, message] of requiredInProd) {
         if (!cfg[key]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message });
+      }
+      // PUBLIC_URL drives the AuthKit redirect URI AND the session cookie's Secure flag, so a
+      // default of http://localhost:3000 in production is both a broken login and an insecure
+      // cookie. Require it, and require TLS.
+      if (!cfg.PUBLIC_URL || cfg.PUBLIC_URL.startsWith('http://')) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['PUBLIC_URL'],
+          message:
+            'required in production and must be https (drives the AuthKit redirect URI and the session cookie Secure flag)',
+        });
       }
       if (cfg.ENABLE_TEST_SEEDER) {
         ctx.addIssue({

@@ -46,7 +46,11 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store,sharing=locked \
     pnpm --filter @spillway/server deploy --prod --legacy --offline /prod
 # Output: dist/ (server TS compiled) and apps/web/dist/ (SPA static)
 # Copy web dist into server's static dir so single process serves SPA
-RUN cp -r apps/web/dist apps/server/dist/public
+RUN cp -r apps/web/dist apps/server/dist/public \
+    # dist/public is served publicly under /app. A shipped .map lets anyone reconstruct the
+    # dashboard source, including the client-side auth flow — belt-and-braces with the vite
+    # sourcemap setting, since this holds no matter how the SPA was built.
+    && find apps/server/dist/public -name '*.map' -delete
 
 # ────────────────────────────────────────────
 # Stage 4: production runtime — production deps only, non-root user

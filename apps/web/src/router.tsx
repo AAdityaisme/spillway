@@ -70,6 +70,9 @@ const settingsRoute = route('/settings', SettingsPage);
 const onboardingRoute = route('/onboarding', OnboardingPage);
 
 export const router = createRouter({
+  // M4-auth: the SPA is mounted at /app behind the landing page. Must match vite.config.ts `base`
+  // or client-side navigation writes URLs the server does not serve.
+  basepath: '/app',
   routeTree: rootRoute.addChildren([
     overviewRoute,
     feedRoute,

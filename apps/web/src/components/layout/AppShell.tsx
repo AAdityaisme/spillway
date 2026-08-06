@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../lib/auth.js';
 import { useOrg } from '../../lib/org.js';
+import { Button } from '../primitives/Button.js';
 import { Card } from '../primitives/Card.js';
 import { Skeleton } from '../primitives/Skeleton.js';
 import { DevAuthBar } from './DevAuthBar.js';
@@ -11,6 +12,9 @@ import { Sidebar } from './Sidebar.js';
 
 /** Pre-auth / pre-org gate screens keep the shell simple: no sidebar until an org context exists. */
 function ConnectGate() {
+  const { signIn } = useAuth();
+  const isDev = typeof import.meta.env !== 'undefined' && import.meta.env.DEV;
+
   return (
     <div className="spillway-band flex flex-1 items-center justify-center p-6">
       <Card padding="lg" className="relative max-w-md text-center">
@@ -22,10 +26,34 @@ function ConnectGate() {
           The console for <em>governed</em> spend.
         </div>
         <p className="mt-2.5 text-sm text-[var(--ink-mut)]">
-          Run <code className="font-mono text-[12px]">pnpm dev:token</code> in the repo, then paste
-          the JWT and org id into the bar above. WorkOS AuthKit login replaces this seam in
-          production.
+          Sign in to set budgets, issue virtual keys, and watch spend get governed in the request
+          path.
         </p>
+        <div className="mt-5 flex items-center justify-center gap-2.5">
+          <Button onClick={() => signIn({ signUp: true })}>Create an account</Button>
+          <Button variant="ghost" onClick={() => signIn()}>
+            Sign in
+          </Button>
+        </div>
+        {isDev ? (
+          <p className="mt-4 text-[12px] text-[var(--ink-mut)]">
+            No WorkOS locally? Run <code className="font-mono text-[11px]">pnpm dev:token</code> and
+            paste the JWT + org id into the bar above.
+          </p>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
+/** Session bootstrap is async, so "no token yet" must not render as "signed out" on every reload. */
+function AuthLoading() {
+  return (
+    <div className="spillway-band flex flex-1 items-center justify-center p-6">
+      <Card padding="lg" className="max-w-md text-center">
+        <Skeleton className="mx-auto h-5 w-40" />
+        <Skeleton className="mx-auto mt-3 h-8 w-64" />
+        <span className="sr-only">Checking your session…</span>
       </Card>
     </div>
   );
@@ -74,15 +102,16 @@ function MobileNav() {
 
 /** Root layout: dev-auth strip, responsive sidebar, scrollable main. */
 export function AppShell() {
-  const { session, activeOrgId } = useAuth();
+  const { session, status, activeOrgId } = useAuth();
   const { loading } = useOrg();
+  const isDev = typeof import.meta.env !== 'undefined' && import.meta.env.DEV;
 
   return (
     <div className="flex h-full flex-col">
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>
-      <DevAuthBar />
+      {isDev ? <DevAuthBar /> : null}
       {session && activeOrgId ? <MobileNav /> : null}
       <div className="flex min-h-0 flex-1">
         {session && activeOrgId ? (
@@ -103,6 +132,8 @@ export function AppShell() {
               </div>
             </main>
           </>
+        ) : status === 'loading' ? (
+          <AuthLoading />
         ) : (
           <ConnectGate />
         )}

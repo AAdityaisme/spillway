@@ -4,7 +4,7 @@
 
 > **The control plane where AI spend is governed, not just observed.**
 >
-> **Live: [spillway-pink.vercel.app](https://spillway-pink.vercel.app)**
+> **Live: [spillway.cloud](https://spillway.cloud)**
 
 Point your OpenAI client at one endpoint. Budgets, approvals, and anomaly detection enforce **at the gateway** — a `402` before the spend, not a dashboard after the invoice.
 

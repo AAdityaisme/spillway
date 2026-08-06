@@ -47,12 +47,12 @@ Two planes, one Fastify server: the data plane proxies and meters model traffic;
 
 ## Stack
 
-| Layer | Tech |
-| ----- | ---- |
-| Server | TypeScript · Fastify 5 · Drizzle + postgres-js · zod · pino |
-| Web | React 18 · Vite · TanStack Router/Query · Tailwind 4 |
+| Layer    | Tech                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------- |
+| Server   | TypeScript · Fastify 5 · Drizzle + postgres-js · zod · pino                                       |
+| Web      | React 18 · Vite · TanStack Router/Query · Tailwind 4                                              |
 | Packages | `@spillway/shared` (zod contracts, error taxonomy) · `@spillway/pricing` (decimal-safe cost math) |
-| Infra | Docker → Fly.io · Neon Postgres · WorkOS AuthKit · GitHub Actions CI |
+| Infra    | Docker → Fly.io · Neon Postgres · WorkOS AuthKit · GitHub Actions CI                              |
 
 ## Layout
 

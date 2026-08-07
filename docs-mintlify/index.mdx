@@ -1,0 +1,73 @@
+---
+title: "Introduction"
+description: "The control plane where AI spend is governed, not just observed."
+---
+
+Spillway is an OpenAI- and Anthropic-compatible AI gateway with a governance brain:
+hierarchical budgets with **hard enforcement**, guardrail policies, approval workflows, and
+cost-aware routing, sitting in front of every model call your organization makes.
+
+You point your existing SDK at Spillway instead of the provider directly. Every request is
+then metered, priced, governed, and logged before — not after — it reaches the provider.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Switch two lines, make your first governed request, and watch a budget block spend
+    before it happens.
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Run Spillway locally: Postgres, migrations, the seed script, and the dev server.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/introduction">
+    Every data-plane and control-plane endpoint, generated from the request/response
+    schemas the server actually validates against.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    The two-plane design: one Fastify process, one Postgres database, hard governance
+    checks before any provider call.
+  </Card>
+</CardGroup>
+
+## The two planes
+
+| Plane   | Base URL | Auth                                                        | What it is                                              |
+| ------- | -------- | ------------------------------------------------------------ | -------------------------------------------------------- |
+| Data    | `/v1/*`  | `Authorization: Bearer mk-live-…` (or `x-api-key`)            | The LLM gateway. Your SDK points here.                    |
+| Control | `/api/*` | Session token, or `mka-…` admin key + `X-Spillway-Org` header | Dashboard and machine API: keys, budgets, approvals, reports. |
+
+Local dev serves both planes from `http://localhost:3000`.
+
+## What governance actually means here
+
+Most gateways log spend after the fact. Spillway's guarantees are enforced **before** the
+request leaves the building:
+
+- **Budgets that block.** A budget in `enforce` mode returns `402` before the provider is
+  called once a scope's spend for the period would exceed its limit — no upstream call, no
+  charge, no surprise invoice.
+- **Guardrail policies.** Match on virtual key, team, model, or metadata; deny, flag, or
+  require approval. Evaluated on every request, not sampled.
+- **Approval workflows.** A policy can gate a request behind a multi-step, tiered approval
+  chain instead of an outright deny.
+- **Cost-aware routing.** Routing rules rewrite a model to a cheaper equivalent or a
+  fallback chain, evaluated per request before dispatch.
+- **A ledger, not a log.** Every request — including every block — is written as a row with
+  its cost, scope, and outcome, so budgets, alerts, and chargeback reports are always
+  reconciled against what actually happened.
+
+## Where next
+
+<Steps>
+  <Step title="Read the Quickstart">
+    Switch your SDK's base URL and key, make one request, then watch a budget block the
+    next one. Five minutes.
+  </Step>
+  <Step title="Run it locally">
+    Follow [Installation](/installation) if you want to run the gateway and dashboard
+    yourself rather than against a hosted instance.
+  </Step>
+  <Step title="Configure governance">
+    [Configuration](/configuration/budgets) covers budgets, guardrail policies, routing
+    rules, approvals, and teams — the resources you'll actually create.
+  </Step>
+</Steps>

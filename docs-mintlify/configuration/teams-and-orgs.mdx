@@ -1,0 +1,66 @@
+---
+title: "Teams & orgs"
+description: "The tenancy hierarchy everything else is scoped against."
+---
+
+Every resource in Spillway — keys, budgets, guardrails, reports — is scoped under an
+**org**, and usually further under a **team**. This hierarchy is enforced at the database
+level with row-level security, not just checked in application code: an org can never read
+another org's rows, full stop.
+
+## Orgs
+
+```jsonc
+// POST /api/orgs
+{
+  "name": "Acme Inc",
+  "slug": "acme"
+}
+```
+
+An admin-key request must carry the `X-Spillway-Org` header naming which org it's acting
+on — an admin key isn't implicitly scoped to one org the way a session token is.
+
+## Teams
+
+```jsonc
+// POST /api/teams
+{
+  "name": "Checkout",
+  "slug": "checkout"
+}
+```
+
+Teams are how spend gets attributed for chargeback and how a budget scoped to `team` finds
+its members. A virtual key's `teamId` (see [Virtual keys](/configuration/virtual-keys))
+is what puts it under a team.
+
+## Members
+
+```jsonc
+// POST /api/members
+{
+  "userId": "<user-id>",
+  "role": "admin"
+}
+```
+
+Four roles: `owner`, `admin`, `member`, `viewer`. Roles gate control-plane actions (creating
+budgets, approving requests, managing keys) — see [Approvals & automation](/configuration/approvals-and-automation)
+for how roles feed into approval-chain `approvers`.
+
+<Warning>
+  The last `owner` on an org can't be removed or demoted (`last_owner`) — there's always
+  someone who can recover access.
+</Warning>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Virtual keys" icon="key" href="/configuration/virtual-keys">
+    Attribute a key to a team.
+  </Card>
+  <Card title="Budgets" icon="wallet" href="/configuration/budgets">
+    Scope a spend cap to an org, team, key, or provider.
+  </Card>
+</CardGroup>

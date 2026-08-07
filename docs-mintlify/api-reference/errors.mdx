@@ -1,0 +1,179 @@
+---
+title: "Errors"
+description: "Response shapes and the stable error code taxonomy."
+---
+
+Every Spillway-originated error carries a stable `code`, a human `message`, and (control
+plane only) a `docs_url` pointing back to this page. Codes are stable across releases —
+build on `code`, not on `message` text.
+
+## Response shapes
+
+Spillway returns a different envelope depending on which plane you're calling, so client
+SDKs parse the shape they already expect.
+
+<Tabs>
+  <Tab title="Control plane (/api/*)">
+    RFC-7807-ish. Always this shape.
+
+    ```jsonc
+    {
+      "error": {
+        "code": "not_found",
+        "message": "budget not found",
+        "docs_url": "https://docs.spillway.cloud/errors/not_found"
+      }
+    }
+    ```
+
+    `details` is present when the error carries structured context (for example, which
+    field failed validation).
+  </Tab>
+  <Tab title="Data plane (/v1/*) — plain">
+    OpenAI-shaped, so `openai`/`anthropic` client libraries parse it without a custom error
+    handler.
+
+    ```jsonc
+    {
+      "error": {
+        "message": "unknown model: gpt-9",
+        "type": "spillway_error",
+        "param": "model",
+        "code": "model_not_found"
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Data plane — blocks">
+    Guardrail denials, budget blocks, and rate limits use the OpenAI-shaped envelope *plus*
+    a nested `error.spillway` object carrying the structured reason — the same block, the
+    same fields, whether it came from a guardrail, a budget, or a rate limit.
+
+    ```jsonc
+    {
+      "error": {
+        "message": "daily budget exceeded for virtual_key",
+        "type": "spillway_error",
+        "code": "budget_exceeded",
+        "param": null,
+        "spillway": {
+          "block_reason": "budget_exceeded",
+          "scope_type": "virtual_key",
+          "scope_id": "<key-uuid>",
+          "period": "day",
+          "period_key": "2026-08",
+          "spent_usd": "20.00",
+          "limit_usd": "20.00"
+        }
+      }
+    }
+    ```
+
+    A guardrail `deny`/`require_approval` block carries `policy_id` and `decision_id` (and
+    `approval_request_id` for `require_approval`) in `error.spillway` instead of the budget
+    fields above.
+  </Tab>
+</Tabs>
+
+### Headers on a block
+
+Blocks also set response headers, so you can branch on the outcome without parsing the
+body:
+
+| Header | Set on |
+| --- | --- |
+| `x-spillway-block-reason` | Every block (budget, guardrail, rate limit). |
+| `x-spillway-block-scope-type` / `-scope-id` / `-period` / `-spent-usd` / `-limit-usd` | Budget blocks. |
+| `x-spillway-policy-id` / `-decision-id` / `-approval-request-id` | Guardrail blocks. |
+| `retry-after` | Rate limits — seconds until the caller should retry. |
+
+## Error codes
+
+<Tip>Every code below is a real, currently-thrown value in the server — not an aspirational list.</Tip>
+
+### Auth & keys
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `key_not_found` | 401 | Missing, unknown, revoked, or expired virtual/admin key — deliberately indistinguishable, so a 401 can't be used to probe for a valid key. |
+| `key_paused` | 403 | The key exists and is valid, but paused. |
+| `key_revoked` | — | Reserved; currently folded into `key_not_found` at the auth boundary above. |
+| `key_expired` | — | Reserved; currently folded into `key_not_found` at the auth boundary above. |
+| `unauthenticated` | 401 | Control-plane session/JWT missing, malformed, or expired. |
+| `forbidden` | 403 | Authenticated, but the role doesn't permit this action. |
+| `last_owner` | 409 | Attempted to remove or demote an org's last `owner`. |
+
+### Governance blocks
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `budget_exceeded` | 402 | An `enforce`-mode budget would be exceeded. See [Budgets](/configuration/budgets). |
+| `rule_deny` | 403 | A guardrail policy's `deny` effect matched. See [Guardrails](/configuration/guardrails). |
+| `approval_required` | 403 | A guardrail's `require_approval` effect matched; an approval request was opened. |
+| `rate_limited` | 429 | The key's `rpmLimit`/`tpmLimit` was exceeded. |
+| `model_not_allowed` | 403 | The requested model isn't in the key's `allowedModels`. |
+| `no_route_available` | 503 | Routing found no candidate satisfying a hard constraint (for example, a data-residency requirement). |
+| `tier_required` | 402 | The org's plan doesn't include this feature. |
+| `plan_upgrade_required` | 402 | A quota/limit gate requires a plan upgrade. |
+
+### Requests & validation
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `invalid_request` | 422 | Malformed request body. |
+| `validation_error` | 400 (occasionally 422) | Control-plane input failed schema/business validation. |
+| `request_too_large` | 400 | Request exceeds the key's `maxInputTokens`. |
+| `unsupported_feature` | 400 | The routed model's declared capabilities don't cover something the request needs (for example, an embeddings call to a chat-only model). |
+| `model_not_found` | 404 | The requested model isn't recognized. |
+| `org_required` | 400 | The call needs org context that wasn't provided (for example, a missing `X-Spillway-Org` on an admin-key request). |
+
+### Providers & gateway
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `provider_key_decrypt_failed` | 502 | The org's provider key couldn't be found or decrypted. |
+| `provider_unavailable` | 502/504 | Upstream timed out or refused the connection. |
+| `all_providers_failed` | 502 | Every candidate in the routing/fallback chain failed. |
+| `no_candidates` | 502 | No adapter is registered for the resolved provider. |
+| `upstream_error` | 502 | The provider returned a server error; the raw body is never forwarded to the client. |
+| `upstream_parse_error` | — | The provider's response body wasn't parseable JSON. |
+| `service_unavailable` | 503 | A dependency (typically the database) failed during a request that must fail closed. |
+
+### Resources (control plane CRUD)
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `not_found` | 404 | The referenced resource (budget, key, policy, team, …) doesn't exist in this org. |
+| `conflict` | 409 | The resource already exists, or the operation conflicts with current state. |
+
+### Approvals & automation
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `approval_chain_unsatisfiable` | 422 | An approval-policy definition has a tier no possible set of approvers could satisfy. |
+| `not_pending` | 409 | A decision was submitted for an approval that's no longer pending. |
+| `self_approval_not_allowed` | 403 | The requester tried to approve their own request. |
+| `not_an_approver` | 403 | The voter isn't in the approval step's frozen approver set. |
+| `unknown_effect` | 422 | An automation/approval effect type has no registered handler. |
+| `invalid_action_token` | 401 | A one-click approve/deny link's signed token is tampered, expired, or wrong. |
+| `threshold_condition_not_isolated` | 422 | An anomaly-alert threshold condition isn't isolated per the alerting engine's rules. |
+
+### CEL (guardrail `conditionCel`)
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `cel_parse_error` | 422 | The CEL expression doesn't parse. |
+| `cel_type_error` | 422 | The expression parses but type-checks incorrectly against the request context. |
+| `cel_cost_exceeded` | 422 | The expression is too expensive to evaluate per-request. |
+| `cel_ast_too_large` | 422 | The expression's parsed AST exceeds the size limit. |
+| `cel_banned_macro` | 422 | The expression uses a macro that's disallowed for guardrail authoring. |
+| `cel_regex_too_long` | 422 | A regex literal inside the expression exceeds the length limit. |
+
+All six CEL codes are returned at **authoring time** — `POST`/`PATCH /api/policies` or
+`POST /api/policies/lint` — not discovered later against live traffic.
+
+### System
+
+| Code | Status | Meaning |
+| --- | --- | --- |
+| `internal_error` | varies (500 by default) | Unexpected server-side failure. Never leaks the underlying cause into the response body. |

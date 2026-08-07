@@ -1,0 +1,86 @@
+---
+title: "Budgets"
+description: "Spend caps that block before the provider is called — not alerts after the invoice."
+---
+
+A budget is a spend cap on a **scope**, over a **period**, with a **mode** that decides what
+happens when it's crossed.
+
+```jsonc
+// POST /api/budgets   (session or admin-key auth)
+{
+  "scopeType": "virtual_key",
+  "scopeId": "<key-uuid>",
+  "period": "day",
+  "limitUsd": "20.00",
+  "mode": "enforce",
+  "onExceed": "block",
+  "fallbackAlias": null
+}
+```
+
+## Fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `scopeType` | `org` \| `team` \| `virtual_key` \| `provider` | What the cap applies to. |
+| `scopeId` | uuid | The specific org/team/key/provider row. |
+| `period` | `day` \| `month` \| `rolling_30d` | The window spend is measured over. |
+| `limitUsd` | decimal string | The cap, e.g. `"20.00"`. Always a string — money is never a float here, on either side of the API. |
+| `mode` | `enforce` \| `alert` \| `monitor` | See below. Defaults to `enforce`. |
+| `onExceed` | `block` \| `fallback` | What an `enforce` budget does once exceeded. Defaults to `block`. |
+| `fallbackAlias` | string \| null | Required when `onExceed` is `fallback` — the alias to reroute to instead of failing. |
+
+## Modes
+
+- **`enforce`** — the next request that would exceed the limit is blocked with `402` before
+  any provider call happens. This is the actual governance guarantee: no upstream call
+  means no charge, regardless of what the provider would have billed.
+- **`alert`** — fires alerts at 80% and 100% of the limit but never blocks. Useful while
+  you're still calibrating a limit.
+- **`monitor`** — tracks spend against the limit with no alerting and no blocking. A
+  baseline you can look at without any behavioral effect.
+
+## What a block looks like
+
+```jsonc
+// HTTP 402
+{
+  "error": {
+    "message": "daily budget exceeded for virtual_key",
+    "type": "spillway_error",
+    "code": "budget_exceeded",
+    "param": null,
+    "spillway": {
+      "scope_type": "virtual_key",
+      "scope_id": "<key-uuid>",
+      "period": "day",
+      "period_key": "2026-08",
+      "spent_usd": "20.00",
+      "limit_usd": "20.00"
+    }
+  }
+}
+```
+
+The block is also written as a `requests` row with `status: blocked` and
+`blockReason: budget_exceeded` — it shows up in the live feed and in reports exactly like a
+served request would, just with no provider cost attached.
+
+## Scope stacking
+
+A single request can fall under more than one budget at once — a virtual-key budget, a team
+budget, and an org budget can all apply to the same call simultaneously. Every applicable
+budget is checked; **any one of them** blocking is enough to block the request. There's no
+precedence to reason about — the tightest applicable cap wins.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Guardrails" icon="shield" href="/configuration/guardrails">
+    Deny or gate requests on criteria other than spend.
+  </Card>
+  <Card title="Routing" icon="route" href="/configuration/routing">
+    Reroute to a cheaper model instead of failing outright.
+  </Card>
+</CardGroup>

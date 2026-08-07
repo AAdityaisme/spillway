@@ -1,0 +1,86 @@
+---
+title: "Virtual keys & provider keys"
+description: "The two key types: what callers use, and what Spillway uses to reach providers."
+---
+
+Spillway has two distinct kinds of API key, and they're not interchangeable.
+
+<CardGroup cols={2}>
+  <Card title="Provider key" icon="key">
+    **Yours.** The real `sk-…` from OpenAI, Anthropic, etc. Spillway stores it encrypted
+    (AES-256-GCM) and uses it to call the provider on your behalf. Never returned to
+    clients.
+  </Card>
+  <Card title="Virtual key" icon="key">
+    **Spillway's.** An `mk-live-…` key you hand to whatever calls the gateway. Scoped to a
+    team, model allow-list, and rate limits — never touches a real provider credential.
+  </Card>
+</CardGroup>
+
+## Provider keys
+
+Add a provider key once per provider your org uses. All governed traffic to that provider
+routes through it.
+
+```jsonc
+// POST /api/provider-keys   (session or admin-key auth)
+{
+  "provider": "openai",
+  "label": "prod-openai",
+  "apiKey": "sk-..."
+}
+```
+
+`apiKey` is write-only — it's encrypted on write and never echoed back by `GET
+/api/provider-keys`. A custom `base_url` isn't accepted yet; custom upstreams go through the
+OpenAI-compatible adapter instead.
+
+## Virtual keys
+
+A virtual key is what you actually distribute — to a service, a team, a script. It's the
+credential the data plane (`/v1/*`) authenticates.
+
+```jsonc
+// POST /api/virtual-keys
+{
+  "name": "checkout-service",
+  "teamId": "<team-uuid>",
+  "allowedModels": ["gpt-4.1-mini", "gpt-4.1"],
+  "rpmLimit": 500,
+  "tpmLimit": 200000,
+  "maxInputTokens": 32000,
+  "maxOutputTokens": 4096,
+  "expiresAt": "2027-01-01T00:00:00Z",
+  "metadata": { "team": "checkout" }
+}
+```
+
+| Field | Type | What it does |
+| --- | --- | --- |
+| `name` | string, required | Label shown in the dashboard and reports. |
+| `teamId` | uuid | Attributes spend to a team (drives budgets scoped to `team` and chargeback reports). |
+| `allowedProviders` | array | Restricts which providers this key may route to. |
+| `allowedModels` | array | Restricts which models this key may request. |
+| `rpmLimit` / `tpmLimit` | integer | Per-key requests-per-minute / tokens-per-minute cap. |
+| `maxInputTokens` / `maxOutputTokens` | integer | Hard ceiling on a single request's token counts. |
+| `expiresAt` | datetime | Key stops authenticating after this time. |
+| `metadata` | object (string values) | Arbitrary tags — also settable per request via the `x-spillway-tags` header, merged into the request's logged metadata. |
+
+The plaintext key (`mk-live-…`) is returned **once**, at creation. Only its hash is stored —
+there's no "reveal" later, only revoke-and-reissue.
+
+<Tip>
+  A virtual key authenticates with `Authorization: Bearer mk-live-…` or `x-api-key:
+  mk-live-…` — both are accepted, so either SDK convention works unmodified.
+</Tip>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Budgets" icon="wallet" href="/configuration/budgets">
+    Cap spend on a virtual key, team, org, or provider.
+  </Card>
+  <Card title="Teams & orgs" icon="users" href="/configuration/teams-and-orgs">
+    Organize keys under teams for attribution and chargeback.
+  </Card>
+</CardGroup>

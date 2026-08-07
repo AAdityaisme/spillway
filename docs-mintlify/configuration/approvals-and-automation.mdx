@@ -1,0 +1,121 @@
+---
+title: "Approvals & automation"
+description: "Tiered approval chains for guardrail-gated requests, and rules that react to events."
+---
+
+## Approval policies
+
+An approval policy defines the chain a `require_approval` guardrail effect opens against —
+tiers by dollar amount, each with one or more sequential steps, each step with its own
+approver set and quorum.
+
+```jsonc
+// POST /api/approval-policies
+{
+  "name": "spend-over-500",
+  "kind": "budget_override",
+  "definition": {
+    "tiers": [
+      {
+        "min_amount_usd": "500",
+        "steps": [
+          {
+            "approvers": { "roles": ["admin"] },
+            "quorum": "any"
+          }
+        ]
+      },
+      {
+        "min_amount_usd": "5000",
+        "steps": [
+          { "approvers": { "roles": ["admin"] }, "quorum": "any" },
+          { "approvers": { "roles": ["owner"] }, "quorum": "all" }
+        ]
+      }
+    ],
+    "expiry_hours": 24
+  }
+}
+```
+
+- **Tiers** are matched by amount — the request's dollar value picks which tier's steps
+  apply. A tier can set `auto_approve: true` to skip human approval entirely below its own
+  threshold.
+- **Steps** run in order. Each step's `approvers` is a set of roles and/or specific user
+  IDs; `quorum` is `"all"`, `"any"`, or a specific integer count of that set who must
+  approve before the step is satisfied and the chain moves on.
+- A step can be `notify_only: true` — informational, doesn't block advancement.
+
+### Deciding an approval
+
+```bash
+POST /api/approvals/{id}/decisions
+```
+
+A few rules the server enforces regardless of what the chain says:
+
+- The requester can't approve their own request (`self_approval_not_allowed`).
+- A vote from someone outside the current step's frozen approver set is rejected
+  (`not_an_approver`) — the approver set is fixed when the step opens, not re-evaluated
+  live against role changes.
+- A decision on an approval that's no longer pending is a `409` (`not_pending`), not a
+  silent no-op.
+- One-click approve/deny links are signed (HMAC) action tokens — see
+  [Errors](/api-reference/errors) for `invalid_action_token`.
+
+### Delegation
+
+`/api/delegations` lets one user stand in for another's approvals over a fixed window:
+
+```jsonc
+// POST /api/delegations
+{
+  "fromUser": "<user-id>",
+  "toUser": "<delegate-user-id>",
+  "startsAt": "2026-08-10T00:00:00Z",
+  "endsAt": "2026-08-17T00:00:00Z"
+}
+```
+
+## Automation rules
+
+An automation rule reacts to an event and runs an effect — the mechanism alerts, webhooks,
+and other reactive behavior are built on.
+
+```jsonc
+// POST /api/automation-rules
+{
+  "name": "notify-slack-on-budget-cross",
+  "priority": 10,
+  "triggerType": "budget_crossed",
+  "condition": { "threshold_pct": 90 },
+  "action": { "type": "slack_notify", "channel": "#spend-alerts" },
+  "state": "active",
+  "stopOnMatch": true,
+  "rateCapPerHour": 10
+}
+```
+
+| Field | Notes |
+| --- | --- |
+| `triggerType` | `alert_fired` \| `approval_decided` \| `key_created` \| `budget_crossed` \| `schedule_cron` |
+| `condition` | Trigger-specific matching criteria (open object — shape depends on `triggerType`). |
+| `action` | The effect to run (open object — shape depends on the registered effect handler). |
+| `state` | `active` runs the action; `notify_only` logs a match without running it (a dry-run mode, same idea as a guardrail's `shadow` enforcement); `disabled` skips evaluation entirely. |
+| `stopOnMatch` | Whether matching this rule stops evaluating lower-priority rules for the same event. Defaults `true`. |
+| `rateCapPerHour` | Caps how often this rule's action can actually fire, independent of how often it matches. Defaults `10`. |
+| `scheduleCron` | Required when `triggerType` is `schedule_cron`. |
+
+Rules are evaluated in `priority` order, same as routing rules and guardrails. Reorder them
+with `POST /api/automation-rules/reorder` rather than editing every rule's priority by hand.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Guardrails" icon="shield" href="/configuration/guardrails">
+    What actually opens an approval request.
+  </Card>
+  <Card title="API reference" icon="code" href="/api-reference/introduction">
+    Full field-by-field schemas for every endpoint on this page.
+  </Card>
+</CardGroup>

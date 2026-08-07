@@ -1,0 +1,74 @@
+---
+title: "Routing & aliases"
+description: "Rewrite a model to a cheaper equivalent, or fall back to one when it fails."
+---
+
+Routing runs after guardrails and the budget check, right before dispatch. It decides which
+concrete provider/model a request actually goes to.
+
+## Routing rules
+
+A routing rule matches a request the same way a guardrail policy does (`virtual_key_ids`,
+`team_ids`, `models`, `metadata`) and applies an action. Rules are evaluated in `priority`
+order.
+
+```jsonc
+// POST /api/routing-rules
+{
+  "priority": 10,
+  "description": "route gpt-4.1 requests from the batch team to the mini tier",
+  "match": {
+    "team_ids": ["<batch-team-uuid>"],
+    "models": ["gpt-4.1"]
+  },
+  "action": {
+    "type": "rewrite_model",
+    "to": { "provider": "openai", "model": "gpt-4.1-mini" },
+    "fallbacks": [
+      { "provider": "openai", "model": "gpt-4.1" }
+    ]
+  }
+}
+```
+
+`action.to` is where the request actually goes. `action.fallbacks` is an ordered chain
+tried if the primary target fails — a rewrite and a fallback chain in one rule, so a
+cost-optimization rewrite doesn't have to sacrifice reliability.
+
+## Aliases
+
+An alias is a named target you can point multiple keys or rules at, so you can repoint
+"the model we use for X" in one place instead of editing every consumer.
+
+```jsonc
+// POST /api/aliases
+{
+  "alias": "fast-tier",
+  "targets": [
+    { "provider": "openai", "model": "gpt-4.1-mini" }
+  ]
+}
+```
+
+`targets` also accepts a weighted/keyed shape (`{ "default": [...] }`) for more complex
+fallback sets — the same shape a budget's `fallbackAlias` (see [Budgets](/configuration/budgets))
+resolves against when a budget's `onExceed` is `fallback`.
+
+<Note>
+  Both routing-rule targets and provider keys are currently scoped to the `openai` provider
+  value in the schema — this is the CRUD surface for *selecting* a provider/model pair, not
+  a statement about which wire dialects the gateway accepts. The data plane itself parses
+  and speaks OpenAI, Anthropic, and Gemini request/response shapes; see
+  [Architecture](/architecture#providers).
+</Note>
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Budgets" icon="wallet" href="/configuration/budgets">
+    `onExceed: "fallback"` resolves against an alias, not a raw model string.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Where routing sits in the request lifecycle.
+  </Card>
+</CardGroup>

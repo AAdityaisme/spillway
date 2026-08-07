@@ -1,0 +1,149 @@
+---
+title: "Architecture"
+description: "One Fastify process, two planes, one Postgres database."
+---
+
+Spillway is one Node process with two HTTP planes in front of one Postgres database.
+There's no separate policy service, no message queue in the request path, no sidecar —
+governance checks run in-process, synchronously, before the provider is ever called.
+
+## The two planes
+
+<Frame>
+```
+                       ┌───────────────────────────────┐
+   your SDK  ───────►  │  Fastify (apps/server)         │
+                       │                                 │
+                       │  /v1/*   data plane             │──► OpenAI / Anthropic /
+                       │  /api/*  control plane          │    Gemini / OpenAI-compat
+                       │                                 │
+   dashboard ───────►  │  static SPA (apps/web build)    │
+                       └───────────────┬─────────────────┘
+                                        │
+                                  Postgres (RLS)
+```
+</Frame>
+
+**Data plane** (`/v1/*`) is the gateway. A client points its OpenAI or Anthropic SDK here;
+Spillway authenticates the virtual key, evaluates guardrails and budgets, dispatches to the
+real provider, streams or returns the response, and records what it cost.
+
+**Control plane** (`/api/*`) is the governance and administration API — the dashboard's
+backend and the machine-readable equivalent for orgs, teams, keys, budgets, policies,
+routing rules, approvals, automation rules, and reports.
+
+The two planes share only the shared request/response schemas and the database — the
+control plane never touches the data plane's request path and vice versa. CORS is
+registered per-plane, not globally, so a misconfigured origin on one plane can't leak into
+the other.
+
+## Request lifecycle (data plane)
+
+A `/v1/chat/completions` or `/v1/messages` request moves through a fixed pipeline, each
+stage a plain function over a shared `PipelineContext`:
+
+<Steps>
+  <Step title="Auth">
+    Parse the virtual key from `Authorization: Bearer` or `x-api-key`, hash it, and load its
+    policy bundle (cached briefly). Not-found, revoked, and expired all return the same
+    `401 key_not_found` so a key can't be probed for existence; a database error during the
+    lookup returns `503`, never a false `401` — the gateway fails closed, not open.
+  </Step>
+  <Step title="Validate">
+    Parse and validate the request body, apply the key's allow-lists, and clamp
+    out-of-range parameters.
+  </Step>
+  <Step title="Guardrails">
+    Evaluate matching guardrail policies (`/api/policies`). A policy can `deny` the request
+    outright, `flag` it for visibility, or `require_approval` and open an approval request
+    instead of failing.
+  </Step>
+  <Step title="Budget check">
+    Check every budget scope the request falls under (virtual key, team, org, provider). A
+    budget in `enforce` mode that would be exceeded blocks the request here — before any
+    provider call.
+  </Step>
+  <Step title="Route">
+    Resolve the target provider and model, applying routing rules (rewrite/fallback),
+    aliases, and residency constraints.
+  </Step>
+  <Step title="Dispatch">
+    Decrypt the provider key, transform the request for the target provider, call upstream,
+    and fork on status: a 2xx is sent to the client immediately; a non-2xx is normalized
+    into a Spillway-shaped error.
+  </Step>
+  <Step title="Reconcile">
+    Compute cost from the provider's usage payload and write the request row — **after**
+    the response has already been sent to the client, so the caller never waits on the
+    audit write. This is also where spend counters (what budgets check against) are
+    incremented, inside a transaction scoped to the request's org.
+  </Step>
+</Steps>
+
+Every response carries an `x-spillway-request-id` header that matches the `requests.id` row
+written by Reconcile — the starting point for tracing any request after the fact.
+
+## Providers
+
+The provider registry currently has adapters for **OpenAI**, **Anthropic**, **Gemini**, and
+a generic **OpenAI-compatible** adapter for custom upstreams. A request arriving in one
+dialect (say, the Anthropic `/v1/messages` shape) can be routed to a model on a different
+provider — Spillway cross-translates the request and response shapes so the client's SDK
+never has to know.
+
+Streaming (SSE) is passed through untouched, teed so usage can be captured from a stream
+without buffering the whole response, with a token estimator as a fallback for providers
+that don't report usage on every chunk.
+
+## Governance building blocks
+
+These are separate resources with separate CRUD endpoints under `/api/*` — see
+[Configuration](/configuration/budgets) for the field-level reference on each:
+
+| Resource | What it controls |
+| --- | --- |
+| **Budgets** | A spend cap on a scope (org / team / virtual key / provider) over a period, with `enforce`/`alert`/`monitor` modes. |
+| **Guardrail policies** | Match-and-effect rules (`deny` / `require_approval` / `flag`) evaluated on every request. |
+| **Routing rules** | Model rewrite and fallback-chain logic, evaluated per request before dispatch. |
+| **Aliases** | Named model targets that can point at one model or a weighted/fallback set. |
+| **Approval policies** | Tiered, multi-step approval chains that a guardrail's `require_approval` effect opens against. |
+| **Automation rules** | Triggers (alert fired, approval decided, key created, budget crossed, on a cron) wired to effects. |
+
+## Data layer
+
+- **Postgres**, one database, **row-level security (RLS) on every table** — multi-tenancy
+  is enforced at the database, not just in application code. A new migration that doesn't
+  add RLS and a policy fails CI (`pnpm migration-lint`).
+- **Money is decimal, never float.** Costs are computed as bigint micro-USD and formatted
+  to a fixed-precision numeric string at the database edge.
+- **Provider keys are encrypted at rest** (AES-256-GCM) and only decrypted in-process,
+  immediately before a provider call.
+- Two database roles: an **app role** (subject to RLS, used by the running server) and a
+  **jobs role** (broader read/delete grants, no RLS bypass) for background jobs —
+  deliberately separate so a compromised app credential can't touch what the jobs role can.
+
+## Background jobs
+
+A small set of scheduled jobs run alongside the server: alert delivery, anomaly-detection
+scans, chargeback/insights aggregation, and data retention. They run in-process on a
+scheduler, gated by `JOBS_ENABLED`, and use the jobs database role rather than the app
+role.
+
+## Auth
+
+- **Humans** (dashboard) authenticate via **WorkOS AuthKit** — a session JWT verified
+  against WorkOS's JWKS.
+- **Machines** authenticate the data plane with a **virtual key** (`mk-live-…`) and the
+  control plane with either a session token or an **admin key** (`mka-…`) plus an
+  `X-Spillway-Org` header.
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="sliders" href="/configuration/budgets">
+    Create budgets, guardrails, routing rules, and approval chains.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/troubleshooting">
+    Common failure modes and how to trace a request.
+  </Card>
+</CardGroup>

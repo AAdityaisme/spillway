@@ -1,0 +1,91 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "maple",
+  "name": "Spillway",
+  "description": "The control plane where AI spend is governed, not just observed.",
+  "colors": {
+    "primary": "#0066CC",
+    "light": "#2997FF",
+    "dark": "#0052A3"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": ["index", "quickstart", "installation"]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/virtual-keys",
+              "configuration/budgets",
+              "configuration/guardrails",
+              "configuration/routing",
+              "configuration/approvals-and-automation",
+              "configuration/teams-and-orgs"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": ["architecture", "troubleshooting", "pricing"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["api-reference/introduction", "api-reference/errors"]
+          },
+          {
+            "group": "Endpoints",
+            "openapi": "api-reference/openapi.json"
+          }
+        ]
+      }
+    ],
+    "global": {
+      "anchors": [
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/AAdityaisme/spillway",
+          "icon": "github"
+        },
+        {
+          "anchor": "Security policy",
+          "href": "https://github.com/AAdityaisme/spillway/security/policy",
+          "icon": "shield-halved"
+        }
+      ]
+    }
+  },
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "Support",
+        "href": "mailto:aadityasharma.ca@gmail.com"
+      }
+    ],
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/AAdityaisme/spillway"
+    }
+  },
+  "contextual": {
+    "options": ["copy", "view", "chatgpt", "claude", "mcp"]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/AAdityaisme/spillway"
+    }
+  }
+}

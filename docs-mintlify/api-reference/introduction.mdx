@@ -1,0 +1,53 @@
+---
+title: "API reference"
+description: "Every data-plane and control-plane endpoint, generated from the request/response schemas the server actually validates."
+---
+
+The endpoints in this section are generated directly from Spillway's OpenAPI spec
+(`pnpm build:openapi` in the monorepo), which is itself generated from the request/response
+zod schemas the server validates every call against — the spec can't drift from what the
+server actually does.
+
+## Base URLs
+
+| Environment | URL |
+| --- | --- |
+| Production | `https://api.spillway.cloud` |
+| Local dev | `http://localhost:3000` |
+
+## Authentication
+
+Spillway has three credential types, scoped to different planes:
+
+| Credential | Plane | How |
+| --- | --- | --- |
+| Virtual key (`mk-live-…`) | Data (`/v1/*`) | `Authorization: Bearer mk-live-…` or `x-api-key: mk-live-…` |
+| Session token | Control (`/api/*`) | Set by the dashboard's WorkOS AuthKit login flow. |
+| Admin key (`mka-…`) | Control (`/api/*`) | `Authorization: Bearer mka-…` **plus** an `X-Spillway-Org` header naming the org to act on. |
+
+A virtual key never authenticates the control plane, and a session token or admin key never
+authenticates the data plane — the two credential families don't cross over.
+
+## The two planes, at a glance
+
+- **Data plane** (`/v1/*`) — `POST /v1/chat/completions`, `POST /v1/messages`,
+  `GET /v1/models`. The gateway itself.
+- **Control plane** (`/api/*`) — everything else: orgs, teams, members, provider keys,
+  virtual keys, admin keys, budgets, guardrail policies, routing rules, aliases, approvals,
+  approval policies, delegations, automation rules, alerts, decision logs, requests, and
+  reports.
+
+## Errors
+
+See [Errors](/api-reference/errors) for response shapes and the full stable error-code
+taxonomy.
+
+## Regenerating this reference
+
+```bash
+pnpm build:openapi
+```
+
+Run from the monorepo root, then copy the resulting `apps/docs/reference/openapi.json` over
+`docs-mintlify/api-reference/openapi.json` — the docs site keeps its own copy so this
+directory can be published independently of the app build.

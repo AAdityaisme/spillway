@@ -1,0 +1,130 @@
+---
+title: "Installation"
+description: "Run the Spillway gateway and dashboard locally."
+---
+
+This page covers running Spillway's own server and dashboard from source. If you just want
+to send requests through a hosted instance, skip to the [Quickstart](/quickstart) instead.
+
+## Requirements
+
+- **Node** ≥ 22
+- **pnpm** 10
+- **Docker** (for local Postgres and integration tests)
+
+You do **not** need a WorkOS account or provider API keys to work on most of the codebase.
+Integration tests mint their own JWTs, and provider calls run against recorded fixtures.
+
+## Set up
+
+<Steps>
+  <Step title="Install dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+
+  <Step title="Configure environment">
+    Copy the example env file and fill in what you need — most variables are optional in
+    development.
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    <Warning>Never commit `.env`. It's gitignored on purpose.</Warning>
+  </Step>
+
+  <Step title="Start Postgres">
+    Local dev and tests run against Dockerized Postgres.
+
+    ```bash
+    pnpm db:up
+    pnpm db:migrate
+    ```
+  </Step>
+
+  <Step title="Seed data (optional)">
+    Mints a demo org, team, and a virtual key you can use immediately.
+
+    ```bash
+    pnpm db:seed
+    # → virtual key: mk-live-…   (shown once)
+    ```
+  </Step>
+
+  <Step title="Run the server and dashboard">
+    <CodeGroup>
+
+    ```bash Gateway + control plane
+    pnpm dev
+    # server on :3000 (data plane + control plane + static)
+    ```
+
+    ```bash Dashboard SPA
+    pnpm dev:web
+    # dashboard on :5173, run alongside `pnpm dev`
+    ```
+
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Two auth modes for local dev
+
+Spillway's dashboard authenticates humans through **WorkOS AuthKit**. You have two options
+locally:
+
+1. **Real WorkOS auth** — set `WORKOS_API_KEY` and `WORKOS_CLIENT_ID` in `.env` (use
+   WorkOS's *Staging* environment's test keys).
+2. **No auth provider at all** — integration tests mint their own JWTs directly, so you can
+   work on most of the codebase without ever touching WorkOS.
+
+Data-plane requests (the gateway itself) never go through WorkOS — they authenticate with a
+virtual key, independent of human auth.
+
+## Quality gates
+
+One command has to pass before a change is done — it's the same thing CI runs:
+
+```bash
+pnpm gate
+# typecheck, lint, unit tests, web tests, integration tests, RLS migration lint, build
+```
+
+Useful subsets while iterating:
+
+| Command                     | What it covers                       |
+| ---------------------------- | ------------------------------------- |
+| `pnpm test`                  | Unit tests only, no containers        |
+| `pnpm test:integration`      | Real Postgres via testcontainers      |
+| `pnpm test:web`              | Dashboard SPA                         |
+| `pnpm migration-lint`        | Every new table has RLS and a policy  |
+| `pnpm lint` / `pnpm format`  | ESLint + Prettier                     |
+
+<Note>
+  Integration tests need Docker running. Avoid running `pnpm stress` within ~15s of an
+  integration run — the previous session's container reaper can sweep the stress harness's
+  containers mid-run and produce a confusing failure.
+</Note>
+
+## Regenerating the API reference
+
+The [API reference](/api-reference/introduction) is generated, not hand-written — the
+request/response schemas are the single source of truth, so the spec can't drift from what
+the server actually validates:
+
+```bash
+pnpm build:openapi
+```
+
+## Where next
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Make your first request against the server you just started.
+  </Card>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    What `pnpm dev` actually boots, and how a request flows through it.
+  </Card>
+</CardGroup>

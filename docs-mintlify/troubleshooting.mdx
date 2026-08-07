@@ -1,0 +1,90 @@
+---
+title: "Troubleshooting"
+description: "Common failure modes, what causes them, and how to trace a request."
+---
+
+## Start with the request ID
+
+Every response — success or error — carries an `x-spillway-request-id` header. It equals
+the id of the `requests` row Spillway wrote for that call. When something looks wrong,
+that's the starting point: find the row, and its `status`, `blockReason`, and cost fields
+tell you what actually happened server-side, independent of what the client saw.
+
+## "My key gets a 401"
+
+`key_not_found` is returned for a key that doesn't exist, is revoked, **or** is expired —
+deliberately the same response for all three, so a 401 can't be used to probe whether a
+specific key exists. A **paused** key gets a separate `403` (`key_paused`), so if you
+expected 401 and got 403, the key exists and is intentionally paused, not invalid.
+
+A `503` instead of a `401` means the key lookup itself failed (a database error), not that
+the key is bad — the gateway fails closed rather than guessing.
+
+## "A request that should have worked returns 402/403 unexpectedly"
+
+Check, in order:
+
+1. **Budgets** — is a scope this request falls under (virtual key, team, org, or provider)
+   currently over its limit? See [Budgets](/configuration/budgets) — remember more than one
+   budget can apply to the same request, and any one of them blocking is enough.
+2. **Guardrails** — does a policy's `match` catch this request? A `require_approval` effect
+   returns `403` with an open approval request, not a plain deny — check
+   `error.spillway.approval_request_id` on the response body.
+3. Both cases write structured headers on the response (`x-spillway-block-reason`, and for
+   budgets specifically `x-spillway-block-scope-type` / `-scope-id` / `-period` /
+   `-spent-usd` / `-limit-usd`) — read those before reaching for the dashboard.
+
+## "A parameter I sent didn't reach the provider"
+
+Spillway validates and clamps parameters per-model; anything unrecognized or out of range
+is silently stripped rather than causing a hard failure, and surfaced on the response as the
+`x-spillway-dropped-params` header. If output looks like the model ignored an argument,
+check that header before assuming it's a model or prompting issue.
+
+## "Cost looks wrong for a request"
+
+The most common cause is confusing an accounting boundary that's not obvious from the raw
+provider response: cached-token pricing is billed separately from full-rate input tokens,
+so a request's logged `input_tokens` deliberately excludes tokens that were served from
+cache. If a manual cost calculation doesn't match what Spillway recorded, check whether
+you're double-counting the cached portion.
+
+## "Spend isn't showing up at all"
+
+Spend is written **after** the response is already sent to the client — the caller never
+waits on the audit write, which means a "did it record?" check run immediately after a
+response can legitimately see nothing yet. Poll briefly rather than assuming a missing row
+means a failure. If it's still missing after a few seconds, check server logs for a
+reconcile failure rather than assuming the request wasn't governed at all — a reconcile
+failure is logged, not silent, and never crashes the response that already went out.
+
+## "A policy/budget change isn't taking effect"
+
+Policy and key state used by the data plane is cached briefly per server instance to avoid
+a database round-trip on every request. A change made in the control plane can take up to
+that TTL to be visible on a running data-plane instance. This is expected lag, not a bug —
+if you need to confirm a change landed, wait a few seconds and retry rather than assuming
+the write failed.
+
+## Local dev: integration tests and stress tests collide
+
+Don't run `pnpm stress` within about 15 seconds of `pnpm test:integration`. The previous
+run's container reaper sweeps stress-harness containers on a timer, and running the two
+back-to-back produces a confusing, unrelated-looking failure. Give it a beat between them.
+
+## Local dev: server won't boot
+
+Boot fails loudly and lists every missing or invalid environment variable at once, rather
+than failing on the first one — read the whole error, not just the top line. In
+`NODE_ENV=production`, several variables that are optional in development become required
+(WorkOS credentials, the action-token secret, the dashboard CORS origin, the metrics token,
+and an HTTPS `PUBLIC_URL`) — see [Installation](/installation) for the local-dev-only
+defaults.
+
+## Something that isn't here
+
+- **Security-relevant issue** (credential exposure, budget bypass, tenant crossover, auth
+  bypass): follow the private disclosure process, not a public issue —
+  [security policy](https://github.com/AAdityaisme/spillway/security/policy).
+- **Everything else**: open a GitHub issue with the `x-spillway-request-id` of an affected
+  request, the endpoint, and what you expected versus what happened.

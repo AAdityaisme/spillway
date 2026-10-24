@@ -329,7 +329,7 @@ describe('/auth/* rate limiting', () => {
   };
 
   async function limited(now: () => number = () => 1_000): Promise<FastifyInstance> {
-    const app = Fastify({ trustProxy: 1 });
+    const app = Fastify({ trustProxy: (_addr, hop) => hop < 1 });
     await app.register(authKitRoutes, {
       authKit: fakeAuthKit(),
       config: { NODE_ENV: 'test', PUBLIC_URL: 'http://localhost:3000' } as never,

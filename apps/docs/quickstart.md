@@ -3,8 +3,8 @@
 Spillway is an OpenAI- and Anthropic-compatible gateway. You keep your SDK; you change two lines —
 the base URL and the API key. Every request is then metered, priced, governed, and logged.
 
-- **Data plane** (the gateway): `https://api.spillway.cloud/v1`
-- **Control plane** (dashboard + admin API): `https://api.spillway.cloud/api`
+- **Data plane** (the gateway): `http://localhost:3000/v1`
+- **Control plane** (dashboard + admin API): `http://localhost:3000/api`
 - **Local dev**: both are served from `http://localhost:3000`.
 
 ---
@@ -33,7 +33,7 @@ The only change to your code is the base URL and the key. Nothing else about you
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="https://api.spillway.cloud/v1",   # was: https://api.openai.com/v1
+    base_url="http://localhost:3000/v1",   # was: https://api.openai.com/v1
     api_key="mk-live-…",                       # your Spillway virtual key
 )
 
@@ -50,7 +50,7 @@ print(resp.choices[0].message.content)
 import OpenAI from 'openai';
 
 const client = new OpenAI({
-  baseURL: 'https://api.spillway.cloud/v1',
+  baseURL: 'http://localhost:3000/v1',
   apiKey: process.env.SPILLWAY_KEY, // mk-live-…
 });
 ```
@@ -62,7 +62,7 @@ provider's model.
 **curl**
 
 ```bash
-curl https://api.spillway.cloud/v1/chat/completions \
+curl http://localhost:3000/v1/chat/completions \
   -H "authorization: Bearer mk-live-…" \
   -H "content-type: application/json" \
   -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hi"}]}'

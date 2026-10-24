@@ -85,6 +85,9 @@ const BODY_LIMIT_BYTES = 16 * 1024 * 1024;
  *
  * Raise this by one for each additional trusted proxy you put in front (e.g. Cloudflare → 2). Setting
  * it too HIGH re-opens the spoof; too LOW just attributes traffic to the proxy. Fail in that direction.
+ *
+ * Passed to Fastify as a function, not the bare number: fastify >=5.12 treats a numeric trustProxy as
+ * "trust nobody" (it cannot verify the peer), which would make req.ip the proxy for every client.
  */
 const TRUST_PROXY_HOPS = (() => {
   const parsed = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '', 10);
@@ -126,7 +129,7 @@ export async function buildApp(opts: AppOptions = {}): Promise<FastifyInstance> 
   const fastify = Fastify({
     logger,
     genReqId: () => randomUUID(), // M1: swap to UUIDv7 (x-spillway-request-id, 12-ops §6.5)
-    trustProxy: TRUST_PROXY_HOPS,
+    trustProxy: (_addr, hop) => hop < TRUST_PROXY_HOPS,
     // Hardening (10-security §7.2). requestTimeout bounds time-to-receive the REQUEST (not the response),
     // so it is safe for long streaming responses. bodyLimit caps upload size; keepAlive bounds idle sockets.
     bodyLimit: BODY_LIMIT_BYTES,

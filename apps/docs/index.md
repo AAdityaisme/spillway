@@ -19,7 +19,7 @@ governs, and logs every request behind budgets, approvals, anomaly detection, an
 | Data    | `/v1/*`  | `Authorization: Bearer mk-live-…` (or `x-api-key`)          | The LLM gateway. Your SDK points here.                        |
 | Control | `/api/*` | Session token, or `mk-admin-…` admin key + `X-Spillway-Org` | Dashboard and machine API: keys, budgets, approvals, reports. |
 
-Production: `https://api.spillway.cloud`. Local dev: `http://localhost:3000` serves both.
+Spillway is self-hosted. Locally, `http://localhost:3000` serves both planes.
 
 ## Regenerating the reference
 

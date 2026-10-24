@@ -17,6 +17,7 @@ Requires Node ≥22, pnpm 10, and Docker (for Postgres and integration tests).
 
 ```bash
 pnpm install
+pnpm build:packages
 cp .env.example .env      # fill in what you need; most of it is optional in dev
 pnpm db:up                # dockerized Postgres
 pnpm db:migrate

@@ -7,10 +7,6 @@
   },
   "servers": [
     {
-      "url": "https://api.spillway.cloud",
-      "description": "Production"
-    },
-    {
       "url": "http://localhost:3000",
       "description": "Local dev"
     }

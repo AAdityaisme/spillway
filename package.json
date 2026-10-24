@@ -15,10 +15,11 @@
     "overrides": {
       "brace-expansion@>=1.0.0 <2.0.0": "^1.1.18",
       "brace-expansion@>=2.0.0 <3.0.0": "^2.1.4",
-      "brace-expansion@>=4.0.0": "^5.0.9",
-      "shell-quote@>=1.0.0": "^1.9.0",
-      "fast-uri@>=3.0.0": "^3.1.6",
+      "brace-expansion@>=4.0.0": "^5.0.11",
+      "shell-quote@>=1.0.0": "^1.11.0",
+      "fast-uri@>=3.0.0": "^3.1.7",
       "find-my-way@>=9.0.0": "^9.7.0",
+      "seroval@>=1.0.0": "^1.6.3",
       "js-yaml@>=4.0.0": "^4.3.1",
       "nanoid@>=3.0.0 <4.0.0": "^3.3.18",
       "postcss@>=8.0.0": "^8.5.23",
@@ -28,7 +29,7 @@
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env apps/server/src/index.ts",
     "dev:web": "pnpm -F web dev",
-    "db:up": "docker compose up -d && docker compose exec postgres pg_isready -U spillway -d spillway_dev --timeout 30",
+    "db:up": "docker compose up -d --wait --wait-timeout 60",
     "db:down": "docker compose down",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
     "db:migrate": "tsx --env-file-if-exists=.env apps/server/src/db/migrate.ts",
@@ -75,7 +76,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.0",
-    "undici": "^7.29.0",
+    "undici": "^7.30.1",
     "vitest": "^3.2.7",
     "zod": "3.25.76"
   }

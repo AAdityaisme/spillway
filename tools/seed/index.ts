@@ -1,20 +1,22 @@
 import { makeDb } from '../../apps/server/src/db/client.js';
 import { withOrg } from '../../apps/server/src/db/tenancy.js';
-import { orgs, virtualKeys, providerKeys, modelPrices } from '../../apps/server/src/db/schema.js';
+import { orgs, virtualKeys, providerKeys } from '../../apps/server/src/db/schema.js';
 import { generateVirtualKey } from '../../apps/server/src/auth/keys.js';
 import { Encryptor } from '../../apps/server/src/services/encryptor.js';
 import { ENC_KEY_FIELDS } from '../../apps/server/src/config.js';
-import { capabilitiesFor } from '../../packages/pricing/src/capabilities.js';
+import { syncPricesFromEnv } from '../../apps/server/src/db/pricing-sync.js';
 
 /**
  * Dev bootstrap seed — the minimum to make a fresh local stack usable without hand-SQL:
- * a dev org, one virtual key (plaintext printed ONCE), an OpenAI provider key when
- * OPENAI_API_KEY is set, and fallback model prices when the pricing table is empty.
+ * a dev org, one virtual key (plaintext printed ONCE), and an OpenAI provider key when
+ * OPENAI_API_KEY is set. Model prices are loaded first through `syncPricesFromEnv`, which connects as the
+ * migration owner: the app role has no write access to model_prices (migration 0007). The production
+ * refusal runs before that sync, so a refused seed writes nothing.
  *
  * The full "Acme AI" demo dataset (teams, budgets, 30-day traffic history — 12-operations
  * §1.4) is a separate M7 deliverable; this script deliberately stays a bootstrap.
  * Idempotent-ish: re-running reuses the org, mints a NEW virtual key, never duplicates
- * the provider key or prices. Refuses to run in production.
+ * the provider key. Refuses to run in production.
  */
 async function main(): Promise<void> {
   if (process.env.NODE_ENV === 'production') {
@@ -26,6 +28,7 @@ async function main(): Promise<void> {
     console.error('DATABASE_URL not set — run `pnpm db:up` and keep it in .env');
     process.exit(1);
   }
+  await syncPricesFromEnv();
 
   const handle = makeDb(url, 2);
   const db = handle.db;
@@ -102,40 +105,10 @@ async function main(): Promise<void> {
     });
   }
 
-  // Fallback prices so budgets meter before the first `pnpm pricing:sync` (which supersedes these).
-  const priced = await db.select({ provider: modelPrices.provider }).from(modelPrices).limit(1);
-  let pricesNote = 'present — untouched';
-  if (priced.length === 0) {
-    await db.insert(modelPrices).values([
-      {
-        provider: 'openai',
-        model: 'gpt-4o',
-        inputUsdPerM: '2.5',
-        outputUsdPerM: '10',
-        cacheReadUsdPerM: '1.25',
-        capabilities: capabilitiesFor('openai', 'gpt-4o'),
-        source: 'litellm',
-        syncedAt: new Date(),
-      },
-      {
-        provider: 'openai',
-        model: 'gpt-4.1',
-        inputUsdPerM: '2',
-        outputUsdPerM: '8',
-        cacheReadUsdPerM: '0.5',
-        capabilities: capabilitiesFor('openai', 'gpt-4.1'),
-        source: 'litellm',
-        syncedAt: new Date(),
-      },
-    ]);
-    pricesNote = 'seeded gpt-4o + gpt-4.1 fallbacks — run `pnpm pricing:sync` for the full table';
-  }
-
   console.log(`\nDev seed complete
   org:          Dev Org (slug 'dev', id ${org.id})
   virtual key:  ${key.plaintext}   ← shown ONCE, hash-only in the DB
   provider key: ${providerKeyNote}
-  model prices: ${pricesNote}
 
 Try it:
   curl -s localhost:3000/v1/chat/completions \\

@@ -85,8 +85,11 @@ export async function runPricingSync(tx: Tx): Promise<{ synced: number; versionI
   return { synced: rows.length, versionId };
 }
 
-/** `pnpm pricing:sync` — the operator's manual run. Connects as the migration superuser locally. */
-async function main(): Promise<void> {
+/**
+ * `pnpm pricing:sync`, the operator's manual run, and the first step of `pnpm db:seed`. Connects as the
+ * migration owner (MIGRATION_DATABASE_URL): the app role has no write access to model_prices (0007).
+ */
+export async function syncPricesFromEnv(): Promise<void> {
   const url =
     process.env.MIGRATION_DATABASE_URL ??
     'postgres://spillway:spillway@localhost:5432/spillway_dev';
@@ -104,7 +107,7 @@ const isCliEntry =
   process.argv[1]?.endsWith('pricing-sync.ts') === true ||
   process.argv[1]?.endsWith('pricing-sync.js') === true;
 if (isCliEntry) {
-  main().catch((err: unknown) => {
+  syncPricesFromEnv().catch((err: unknown) => {
     console.error(err);
     process.exit(1);
   });

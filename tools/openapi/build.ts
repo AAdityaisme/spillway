@@ -1004,10 +1004,7 @@ const doc = generator.generateDocument({
       'and administration API (`/api/*`). Request bodies are generated from the zod schemas in ' +
       '`@spillway/shared` — the single source of truth.',
   },
-  servers: [
-    { url: 'https://api.spillway.cloud', description: 'Production' },
-    { url: 'http://localhost:3000', description: 'Local dev' },
-  ],
+  servers: [{ url: 'http://localhost:3000', description: 'Local dev' }],
 });
 
 const outDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../apps/docs/reference');

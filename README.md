@@ -66,13 +66,16 @@ You need Node 22 or newer, pnpm 10 and Docker. You do not need a WorkOS account 
 
 ```bash
 pnpm install
-cp .env.example .env     # fill in values; never commit .env
+pnpm build:packages      # builds the workspace packages the server imports
+cp .env.example .env     # never commit .env
 pnpm db:up               # Postgres 18 in Docker
 pnpm db:migrate
-pnpm db:seed             # mints a dev org and a virtual key (printed once)
+pnpm db:seed             # loads model prices, then mints a dev org and a virtual key (printed once)
 pnpm dev                 # server on :3000
 pnpm dev:web             # dashboard on :5173, in a second terminal
 ```
+
+To boot the server, set two secrets in `.env` first: `SPILLWAY_ENC_KEY_V1` (`openssl rand -base64 32`) and `SPILLWAY_ACTION_TOKEN_SECRET` (`openssl rand -hex 32`). Everything else in `.env.example` is optional for local use.
 
 To send real traffic you add a provider key. `db:seed` registers an OpenAI key when `OPENAI_API_KEY` is set. Then point an SDK at `http://localhost:3000/v1` with the seeded virtual key.
 
@@ -106,7 +109,7 @@ pnpm gate                # all of the above plus web tests and build
 
 ## Docs
 
-[Quickstart](https://spillway.mintlify.site/quickstart) and [API reference](https://spillway.mintlify.site/api-reference/introduction) live at [spillway.mintlify.site](https://spillway.mintlify.site). Some examples there use a hosted URL that no longer exists. Use `http://localhost:3000` instead.
+[Quickstart](https://spillway.mintlify.site/quickstart) and [API reference](https://spillway.mintlify.site/api-reference/introduction) live at [spillway.mintlify.site](https://spillway.mintlify.site). Examples use `http://localhost:3000`, since Spillway is self-hosted only.
 
 ## Stack
 

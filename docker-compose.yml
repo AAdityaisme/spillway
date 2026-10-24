@@ -26,7 +26,9 @@ services:
       - pg_data:/var/lib/postgresql
       - ./apps/server/src/db/migrations/init-roles.sql:/docker-entrypoint-initdb.d/01-init-roles.sql:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U spillway -d spillway_dev']
+      # -h localhost forces TCP: the image's init-time temp server listens on the unix socket only, so a
+      # socket check goes healthy before init-roles.sql has run and `up --wait` would return early.
+      test: ['CMD-SHELL', 'pg_isready -h localhost -U spillway -d spillway_dev']
       interval: 5s
       timeout: 3s
       retries: 10

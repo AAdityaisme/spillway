@@ -37,3 +37,12 @@ blockExoticSubdeps: true # sub-deps must come from the registry — no git/tarba
 # code CI never tested. Injected = workspace deps are hard-copied into each consumer's
 # node_modules instead of symlinked.
 injectWorkspacePackages: true
+
+# Accepted risk: GHSA-mrhx-c7xc-m3w5 (zod <4.6.6, memory exhaustion validating oversized constrained
+# collections). Zod 3.25.76 has no patched release and the zod 4 migration is out of scope.
+# Mitigation in code: the server caps every request body at 16 MiB (BODY_LIMIT_BYTES, bodyLimit in
+# apps/server/src/app.ts), so attacker-controlled collection size is bounded, not eliminated.
+# Revisit when the zod 4 migration lands; then DELETE this entry (an ignore for a fixed advisory is dead weight).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-mrhx-c7xc-m3w5

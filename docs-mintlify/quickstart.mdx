@@ -7,10 +7,9 @@ Spillway is an OpenAI- and Anthropic-compatible gateway. You keep your SDK; you 
 lines — the base URL and the API key. Every request is then metered, priced, governed, and
 logged.
 
-- **Data plane** (the gateway): `https://api.spillway.cloud/v1`
-- **Control plane** (dashboard + admin API): `https://api.spillway.cloud/api`
-- **Local dev**: both are served from `http://localhost:3000` — see [Installation](/installation)
-  if you're running Spillway yourself rather than against a hosted instance.
+- **Data plane** (the gateway): `http://localhost:3000/v1`
+- **Control plane** (dashboard + admin API): `http://localhost:3000/api`
+- **Self-hosting**: both planes are served from one process, `http://localhost:3000` by default. See [Installation](/installation).
 
 <Steps>
   <Step title="Get a virtual key">
@@ -35,7 +34,7 @@ logged.
     from openai import OpenAI
 
     client = OpenAI(
-        base_url="https://api.spillway.cloud/v1",  # was: https://api.openai.com/v1
+        base_url="http://localhost:3000/v1",  # was: https://api.openai.com/v1
         api_key="mk-live-...",                      # your Spillway virtual key
     )
 
@@ -50,13 +49,13 @@ logged.
     import OpenAI from 'openai';
 
     const client = new OpenAI({
-      baseURL: 'https://api.spillway.cloud/v1',
+      baseURL: 'http://localhost:3000/v1',
       apiKey: process.env.SPILLWAY_KEY, // mk-live-...
     });
     ```
 
     ```bash curl
-    curl https://api.spillway.cloud/v1/chat/completions \
+    curl http://localhost:3000/v1/chat/completions \
       -H "authorization: Bearer $SPILLWAY_KEY" \
       -H "content-type: application/json" \
       -d '{"model":"gpt-4.1-mini","messages":[{"role":"user","content":"hi"}]}'

@@ -27,9 +27,11 @@ Check, in order:
 1. **Budgets** — is a scope this request falls under (virtual key, team, org, or provider)
    currently over its limit? See [Budgets](/configuration/budgets) — remember more than one
    budget can apply to the same request, and any one of them blocking is enough.
-2. **Guardrails** — does a policy's `match` catch this request? A `require_approval` effect
-   returns `403` with an open approval request, not a plain deny — check
-   `error.spillway.approval_request_id` on the response body.
+2. **Guardrails** — does a policy's `match` catch this request? A `deny` effect returns `403`
+   outright, no approval flow involved. (The schema also defines a `require_approval` effect,
+   but authoring a policy with it is rejected with `422` today — see
+   [Guardrails](/configuration/guardrails) — so a guardrail `403` you see live is always a
+   `deny`.)
 3. Both cases write structured headers on the response (`x-spillway-block-reason`, and for
    budgets specifically `x-spillway-block-scope-type` / `-scope-id` / `-period` /
    `-spent-usd` / `-limit-usd`) — read those before reaching for the dashboard.

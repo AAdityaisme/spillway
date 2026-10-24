@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import cors from '@fastify/cors';
 import type { JWTVerifyGetKey } from 'jose';
+import type { Dispatcher } from 'undici';
 import { SpillwayError, controlPlaneErrorBody } from '@spillway/shared';
 import { pgErrorCode } from '../db/pg-error.js';
 import { registerControlPlaneRateLimit } from './rate-limit.js';
@@ -37,6 +38,13 @@ export interface ControlPlaneOptions {
   db?: DatabaseClient;
   /** Test seam: inject a local JWKS + verify options instead of WorkOS's remote JWKS. */
   auth?: { jwks?: JWTVerifyGetKey; verifyOpts?: VerifyOptions };
+  /**
+   * Test seam: undici dispatcher for the test-fire channel sink's outbound HTTP, mirroring the
+   * data plane's `ctx.deps.dispatcher ?? ssrfGuardedDispatcher()`. Needed because alert delivery
+   * now passes an explicit dispatcher, and an explicit dispatcher bypasses setGlobalDispatcher —
+   * so a MockAgent installed globally would never see the request.
+   */
+  dispatcher?: Dispatcher;
 }
 
 /**
@@ -126,7 +134,7 @@ export const controlPlanePlugin: FastifyPluginAsync<ControlPlaneOptions> = async
     await scoped.register(routingRulesRoutes, { db });
     await scoped.register(policiesRoutes, { db });
     await scoped.register(decisionLogsRoutes, { db });
-    await scoped.register(alertsRoutes, { db });
+    await scoped.register(alertsRoutes, { db, dispatcher: opts.dispatcher });
     await scoped.register(approvalsRoutes, { db });
     await scoped.register(automationRulesRoutes, { db });
     await scoped.register(approvalPoliciesRoutes, { db });

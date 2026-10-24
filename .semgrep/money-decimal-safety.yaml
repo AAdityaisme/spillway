@@ -1,0 +1,126 @@
+## ADR-019e decimal-safety invariant (packages/pricing/src/money.ts):
+##
+## Money moves through the codebase as either:
+##   - a `numeric(...)` DB column, which drizzle types as a decimal STRING in JS
+##     (fields named `*Usd*`, e.g. `inputUsdPerM`, `spentUsd`, `limitUsd`, `costUsd`), or
+##   - integer micro-USD as a `bigint` (fields/vars named `*Micro*` or `*MicroUsd*`,
+##     e.g. `costMicroUsd`, `limitMicroUsd`, `estimateMicro`, or bare `spent`/`reserved`
+##     bigints returned from the ledger).
+##
+## `parseUsd`/`parseNonNegativeUsd` (string -> bigint) and `formatUsd` (bigint -> string)
+## are the ONLY sanctioned crossings between the two. `Number()`/`parseFloat()` on a decimal
+## string, or JS arithmetic operators applied directly to one (which coerces it through the
+## same lossy float path), silently reintroduces float drift into budget enforcement and
+## chargeback reconciliation — exactly what ADR-019e exists to prevent.
+##
+## Bigint arithmetic on `*Micro*` values (e.g. `costMicroUsd + lineCost(...)`) is the
+## sanctioned pattern and is NOT matched by these rules (excluded via the `Micro` guard in
+## the metavariable-regex below).
+
+rules:
+  - id: money-no-parsefloat
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      parseFloat() is banned in money paths (ADR-019e). Money is a numeric(...) decimal
+      string in JS; parse it with parseUsd()/parseNonNegativeUsd() from @spillway/pricing
+      into integer micro-USD (bigint), never into a float.
+    patterns:
+      - pattern: parseFloat(...)
+    paths:
+      # WIDENED 2026-08-08 (red-team H3). The previous include-list was
+      # pricing/src + *ledger*/*cost*/*budget* filename globs, which covered 7 of ~38
+      # money-touching files — and the `*ledger*`/`*cost*` globs matched exactly ONE .ts file in
+      # apps/server, so they were near-dead weight. Meanwhile reconcile.ts (the billing WRITE
+      # path), chargeback.ts (invoicing), kpi.ts and the pricing stages were all unguarded, and
+      # three unguarded files were doing float arithmetic on money at the time of the audit.
+      # Scope is now the whole server + pricing package; the exclude-list below is where
+      # sanctioned conversions are named individually, so each one is a decision on the record
+      # rather than an accident of a filename glob.
+      include:
+        - '**/packages/pricing/src'
+        - '**/packages/certifier/src'
+        - '**/apps/server/src'
+      exclude:
+        - '**/packages/pricing/src/money.ts' # the sanctioned string<->bigint boundary itself
+        - '**/*.test.ts'
+
+  - id: money-no-number-coercion
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Number() applied to a USD-denominated value converts the decimal-string/bigint
+      money representation to a lossy float (ADR-019e). Use parseUsd()/parseNonNegativeUsd()
+      (string -> bigint micro-USD) or formatUsd() (bigint -> string) from @spillway/pricing
+      instead — never Number().
+    patterns:
+      - pattern: Number($X)
+      - metavariable-regex:
+          metavariable: $X
+          # matches an operand whose name contains "usd" but not "micro" — i.e. a raw
+          # numeric(...) decimal-string field, not an already-safe *Micro* bigint.
+          regex: (?i)^(?!.*micro).*usd.*$
+    paths:
+      # WIDENED 2026-08-08 (red-team H3). The previous include-list was
+      # pricing/src + *ledger*/*cost*/*budget* filename globs, which covered 7 of ~38
+      # money-touching files — and the `*ledger*`/`*cost*` globs matched exactly ONE .ts file in
+      # apps/server, so they were near-dead weight. Meanwhile reconcile.ts (the billing WRITE
+      # path), chargeback.ts (invoicing), kpi.ts and the pricing stages were all unguarded, and
+      # three unguarded files were doing float arithmetic on money at the time of the audit.
+      # Scope is now the whole server + pricing package; the exclude-list below is where
+      # sanctioned conversions are named individually, so each one is a decision on the record
+      # rather than an accident of a filename glob.
+      include:
+        - '**/packages/pricing/src'
+        - '**/packages/certifier/src'
+        - '**/apps/server/src'
+      exclude:
+        - '**/packages/pricing/src/money.ts' # the sanctioned string<->bigint boundary itself
+        - '**/*.test.ts'
+
+  - id: money-no-raw-arithmetic-on-usd-string
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      Arithmetic operator applied directly to a USD decimal-string field (ADR-019e). Even
+      without an explicit Number()/parseFloat() call, `+`/`-`/`*`/`/` on a numeric(...)
+      string field coerces it through JS float semantics. Parse with parseUsd() to bigint
+      micro-USD first, then use addUsd()/subUsd()/plain bigint arithmetic.
+    patterns:
+      # Constrained to `$OBJ.$FIELD` (a bare member-access operand) rather than a generic
+      # metavariable: with an unconstrained operand, $F can bind to an arbitrarily large
+      # enclosing subexpression in a longer +/- chain (e.g. the whole
+      # `BigInt(...) * parseUsd(priceUsdPerM)` term), and metavariable-regex then matches
+      # against THAT whole span's text — which still textually contains "UsdPerM" even
+      # though the actual field access is safely wrapped in parseUsd() several tokens
+      # inside it. Anchoring to `$OBJ.$FIELD` binds $FIELD to just the property-name
+      # token, so the regex only ever sees the real field name.
+      - pattern-either:
+          - pattern: $OBJ.$FIELD * $Y
+          - pattern: $Y * $OBJ.$FIELD
+          - pattern: $OBJ.$FIELD + $Y
+          - pattern: $Y + $OBJ.$FIELD
+          - pattern: $OBJ.$FIELD - $Y
+          - pattern: $Y - $OBJ.$FIELD
+          - pattern: $OBJ.$FIELD / $Y
+          - pattern: $Y / $OBJ.$FIELD
+      - metavariable-regex:
+          metavariable: $FIELD
+          regex: (?i)^(?!.*micro).*usd.*$
+    paths:
+      # WIDENED 2026-08-08 (red-team H3). The previous include-list was
+      # pricing/src + *ledger*/*cost*/*budget* filename globs, which covered 7 of ~38
+      # money-touching files — and the `*ledger*`/`*cost*` globs matched exactly ONE .ts file in
+      # apps/server, so they were near-dead weight. Meanwhile reconcile.ts (the billing WRITE
+      # path), chargeback.ts (invoicing), kpi.ts and the pricing stages were all unguarded, and
+      # three unguarded files were doing float arithmetic on money at the time of the audit.
+      # Scope is now the whole server + pricing package; the exclude-list below is where
+      # sanctioned conversions are named individually, so each one is a decision on the record
+      # rather than an accident of a filename glob.
+      include:
+        - '**/packages/pricing/src'
+        - '**/packages/certifier/src'
+        - '**/apps/server/src'
+      exclude:
+        - '**/packages/pricing/src/money.ts' # the sanctioned string<->bigint boundary itself
+        - '**/*.test.ts'

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig, workosIssuer } from './config.js';
+import { DEFAULT_ERRORS_DOCS_URL } from '@spillway/shared';
 
 const base = {
   NODE_ENV: 'test',
@@ -20,7 +21,21 @@ const prodBase = {
   METRICS_TOKEN: 'tok',
   PUBLIC_URL: 'https://spillway.cloud', // M4-auth: required + https in prod (drives cookie Secure)
   WORKOS_COOKIE_PASSWORD: 'c'.repeat(32), // M4-auth: seals the AuthKit session cookie, ≥32 chars
+  WORKOS_JWT_AUD: 'client_prod', // required in prod: pins the JWT audience
 };
+
+describe('SPILLWAY_DOCS_URL', () => {
+  it('defaults to the hosted Mintlify errors reference', () => {
+    expect(parseConfig(base).SPILLWAY_DOCS_URL).toBe(DEFAULT_ERRORS_DOCS_URL);
+  });
+
+  it('is overridable while the docs host is still in flux', () => {
+    expect(
+      parseConfig({ ...base, SPILLWAY_DOCS_URL: 'https://docs.example.com/errors' })
+        .SPILLWAY_DOCS_URL,
+    ).toBe('https://docs.example.com/errors');
+  });
+});
 
 describe('workosIssuer', () => {
   it('uses WorkOS hosted AuthKit as the verified issuer by default', () => {
@@ -55,6 +70,9 @@ describe('parseConfig — production boot invariants', () => {
     ['METRICS_TOKEN'],
     ['WORKOS_COOKIE_PASSWORD'],
     ['PUBLIC_URL'],
+    // Unset, the JWT `aud` claim is not checked at all, so ANY access token minted by this WorkOS
+    // client — including one issued to a different application — authenticates against this API.
+    ['WORKOS_JWT_AUD'],
   ] as const)('throws when %s is absent in production', (key) => {
     const env = { ...prodBase };
     delete (env as Record<string, string>)[key];
@@ -95,5 +113,65 @@ describe('parseConfig — production boot invariants', () => {
 
   it('throws when WORKOS_JWT_AUD is an empty string (empty must not silently disable enforcement)', () => {
     expect(() => parseConfig({ ...prodBase, WORKOS_JWT_AUD: '' })).toThrow();
+  });
+});
+
+// ADR-014 rotation. An incoherent key/version combination must die at boot, not at the first
+// request that needs a key nobody loaded.
+describe('parseConfig — encryption key versions', () => {
+  const V2 = Buffer.alloc(32, 2).toString('base64');
+
+  it('defaults an untouched V1-only env to current version 1 (backward compatibility)', () => {
+    expect(parseConfig(base).SPILLWAY_ENC_KEY_CURRENT).toBe(1);
+    expect(parseConfig(base).SPILLWAY_ENC_KEY_V2).toBeUndefined();
+  });
+
+  it('throws when V1 is absent and the current version is still 1', () => {
+    const env = { ...base };
+    delete (env as Record<string, string>).SPILLWAY_ENC_KEY_V1;
+    expect(() => parseConfig(env)).toThrow(/SPILLWAY_ENC_KEY_V1/);
+  });
+
+  it('accepts V2 loaded while current is still 1 (the pre-cutover rollout state)', () => {
+    const cfg = parseConfig({ ...base, SPILLWAY_ENC_KEY_V2: V2 });
+    expect(cfg.SPILLWAY_ENC_KEY_CURRENT).toBe(1);
+    expect(cfg.SPILLWAY_ENC_KEY_V2).toBe(V2);
+  });
+
+  it('accepts current=2 with both keys loaded (the zero-downtime rotation window)', () => {
+    expect(
+      parseConfig({ ...base, SPILLWAY_ENC_KEY_V2: V2, SPILLWAY_ENC_KEY_CURRENT: '2' })
+        .SPILLWAY_ENC_KEY_CURRENT,
+    ).toBe(2);
+  });
+
+  it('accepts current=2 with V1 retired (rotation complete — the old key is out of the env)', () => {
+    const env = { ...base, SPILLWAY_ENC_KEY_V2: V2, SPILLWAY_ENC_KEY_CURRENT: '2' };
+    delete (env as Record<string, string>).SPILLWAY_ENC_KEY_V1;
+    expect(() => parseConfig(env)).not.toThrow();
+  });
+
+  it('throws when the current version has no key', () => {
+    expect(() => parseConfig({ ...base, SPILLWAY_ENC_KEY_CURRENT: '2' })).toThrow(
+      /SPILLWAY_ENC_KEY_V2 is not set/,
+    );
+  });
+
+  it('throws when the current version is outside the known versions', () => {
+    expect(() => parseConfig({ ...base, SPILLWAY_ENC_KEY_CURRENT: '3' })).toThrow();
+  });
+
+  it('throws when V2 has the wrong decoded length', () => {
+    expect(() =>
+      parseConfig({ ...base, SPILLWAY_ENC_KEY_V2: Buffer.alloc(31, 2).toString('base64') }),
+    ).toThrow();
+  });
+
+  // A copy-pasted "new" key produces a re-seal that reports success while the compromised key
+  // still opens every row. Nothing downstream can detect it.
+  it('throws when V2 is identical to V1', () => {
+    expect(() => parseConfig({ ...base, SPILLWAY_ENC_KEY_V2: base.SPILLWAY_ENC_KEY_V1 })).toThrow(
+      /identical/,
+    );
   });
 });

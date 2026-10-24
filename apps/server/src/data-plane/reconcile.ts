@@ -1,5 +1,11 @@
 import { sql, eq } from 'drizzle-orm';
-import { computeCost, formatUsd, parseUsd, type CanonicalUsage } from '@spillway/pricing';
+import {
+  computeCost,
+  formatUsd,
+  parseUsd,
+  type CanonicalUsage,
+  type CostResult,
+} from '@spillway/pricing';
 import { withOrg } from '../db/tenancy.js';
 import { evaluateAndFireBudgetThresholds, type PostCounter } from '../services/alerts/threshold.js';
 import { sessionPinKey } from './routing/session-pin.js';
@@ -11,14 +17,19 @@ import { requests, requestAttempts, spendCounters } from '../db/schema.js';
 // AND fork the canonical spend_counters lock order (the ABBA deadlock class).
 import {
   providerScopeId,
-  currentPeriodKeys,
   counterPeriodKeys,
   SCOPE_RANK,
   type BudgetScopeType,
 } from './budget/resolver.js';
 import { releaseBudgetReservation } from './budget/reservation.js';
 import { recordReconcileLatency } from './reconcile.slo.js';
-import { spendWriteLostTotal } from '../observability/metrics.js';
+import {
+  spendWriteLostTotal,
+  recordRequestCompletion,
+  observeRequestDuration,
+  recordSpendUsd,
+  recordTokens,
+} from '../observability/metrics.js';
 import type { ProviderName } from './routing/compile.js';
 import type { PipelineContext } from './pipeline/context.js';
 import type { ParsedUsage } from './providers/types.js';
@@ -137,19 +148,61 @@ const RECONCILE_RETRY_DELAYS_MS = [250, 1000];
  * row (cost_usd = SUM(attempts), §4.3). Never throws to the caller post-response.
  */
 export async function runReconcile(ctx: PipelineContext): Promise<void> {
-  const { policy, usage, requestId, startedAt, upstreamStatus } = ctx;
-  // Release the pre-dispatch budget hold now that this request settles to real spend (idempotent —
-  // self-guards on ctx.budgetReservationSettled, so the first attempt's reconcile frees it once).
-  await releaseBudgetReservation(ctx);
+  const { policy, usage, requestId, startedAt, upstreamStatus, attemptNumber, errorCode } = ctx;
+  /**
+   * THE RULE FOR EVERY `ctx` READ IN THIS FUNCTION — read it before you add one.
+   *
+   *   ATTEMPT-SCOPED state MUST be read from the entry snapshot below, never off `ctx`.
+   *   REQUEST-SCOPED state MAY be read live off `ctx`.
+   *
+   * WHY. `ctx` is ONE mutable object for the whole request, and DISPATCH rewrites the attempt-scoped
+   * fields on it every time the candidate chain advances. That is only safe while this invocation is
+   * the one the chain is waiting on — and it is not always. guardedReconcile (streaming/sse-tee.ts)
+   * races every reconcile against RECONCILE_TIMEOUT_MS and ABANDONS the loser: nothing cancels the
+   * promise, it keeps running, and runStreamChain advances to the next candidate the moment the race
+   * resolves. So a reconcile CAN OUTLIVE ITS OWN ATTEMPT. An invocation entered for candidate A can
+   * reach any line below at a moment when `ctx` already describes candidate B, and every live read of
+   * an attempt-scoped field then silently settles A's money against B's identity.
+   *
+   * ATTEMPT-SCOPED (snapshot; each is rewritten per candidate by dispatch.ts / sse-tee.ts):
+   *   attemptNumber   — the ledger PK. Reading it live writes A's data under B's key; B's own insert
+   *                     then hits the ON CONFLICT DO NOTHING gate, its whole settle tx no-ops, and B's
+   *                     real spend is gone with no error raised anywhere. Silent loss, the worst
+   *                     failure this path has.
+   *   isFinalAttempt  — decides the aggregated `requests` row. Read live, A writes or skips that row on
+   *                     B's flag: a skip loses it outright; a write collides with B's step-3 insert,
+   *                     rolling B's settle back through both retries into spend_write_lost.
+   *   errorCode       — dispatch.ts nulls it before the next attempt. Read live it records
+   *                     error_code NULL on an outcome='error' row — and `outcome` is derived HERE, at
+   *                     entry, so the two would be sampled at different instants and disagree.
+   *   budgetReservation — the in-flight hold. See the identity check in the finally.
+   *   timings.firstByte — this attempt's TTFT. Only set on commit, so the damage is a wrong ttft_ms
+   *                     rather than wrong money; snapshotted anyway, because leaving one field of the
+   *                     set live is what makes the next reader assume the set was audited and safe.
+   *
+   * REQUEST-SCOPED (safe live — set once, pre-dispatch, and never per candidate): policy, requestId,
+   * startedAt, upstreamStatus, usage, serviceTier, priceByCandidate, servedUnderBudgetFallback,
+   * requestFeatures, requestedModel, endpoint, stream, knobs, validatedBody, req, routeResult, deps,
+   * and fallbackFrom (it only accumulates, and only the final attempt — the last one — reads it).
+   *
+   * The two `activeCandidate ?? candidate` reads that survive below are attempt-scoped but provably
+   * safe: provider/model are already derived at entry, and the session pin is gated on `isFinal`,
+   * which a chain never advances off. The `lost` diagnostics deliberately keep reading `ctx.usage`
+   * live — that payload is a hand-replay aid, and the freshest view is the useful one there.
+   */
+  const isFinal = ctx.isFinalAttempt;
+  const heldAtEntry = ctx.budgetReservation;
+  const ttftMs = ctx.timings.firstByte ?? null;
   try {
     const canonical = toCanonical(usage);
     canonical.serviceTier = ctx.serviceTier; // request-time tier → computeCost multiplier (20 §3)
     const provider = ctx.activeCandidate?.provider ?? ctx.candidate?.provider ?? null;
     const model = ctx.activeCandidate?.model ?? ctx.candidate?.model ?? null;
 
-    let cost: { costMicroUsd: bigint | null; unitPrices: Record<string, string> | null } = {
+    let cost: CostResult = {
       costMicroUsd: null,
       unitPrices: null,
+      unpricedDimensions: null,
     };
     if (provider && model) {
       try {
@@ -159,20 +212,35 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
       } catch (e) {
         ctx.req.log.error({ e }, 'computeCost failed; recording null cost');
       }
-      // Pricing was preflighted before dispatch. Retain this guard as a circuit
-      // breaker against a future executor path bypassing that fail-closed stage.
+      // A null cost here is NOT routine. runPricing() rejects an unpriced model pre-dispatch (503),
+      // and computeCost now ceiling-bills unpriced CACHE lines rather than voiding the whole request,
+      // so the only way to land here is a request that populated a modal dimension (audio / image /
+      // tool session / web search) the model has no rate for and no derivable bound. The usage is
+      // still recorded on the attempt row with cost_usd NULL so it can be re-priced once the rate is
+      // added — but the counter bump below adds $0, which means THIS request's real spend is invisible
+      // to budgets. That residual is deliberate (inventing a modal price is worse than knowing we do
+      // not have one) and is why this logs at error: it wants a catalog fix, not a silent shrug.
       if (cost.costMicroUsd === null) {
+        ctx.req.log.error(
+          { provider, model, requestId, unpricedDimensions: cost.unpricedDimensions },
+          'unpriced dimension with no derivable bound — spend metered at $0 (budget-invisible)',
+        );
+      } else if (cost.unpricedDimensions !== null) {
+        // Priced, but at least one cache line was billed at the input-rate CEILING instead of its own
+        // (missing) rate. Spend IS metered and budgets DO see it — it is an upper bound, so a
+        // statement may over-state this line until the catalog gains the rate. Snapshotted on the row
+        // as unit_prices.unpriced_dimensions.
         ctx.req.log.warn(
-          { provider, model, requestId },
-          'no price for model — spend metered at $0 (budget-invisible)',
+          { provider, model, requestId, unpricedDimensions: cost.unpricedDimensions },
+          'cache dimension unpriced — billed at the input-rate ceiling',
         );
       }
     }
     const costStr = cost.costMicroUsd === null ? null : formatUsd(cost.costMicroUsd);
     // A streaming request commits http 200 BEFORE a mid-stream failure is known; an errorCode means
     // error even if upstreamStatus stayed 200 (ADR-034 M8). client_closed is its own attempt outcome.
-    const ok = upstreamStatus >= 200 && upstreamStatus < 300 && !ctx.errorCode;
-    const isClientClose = ctx.errorCode != null && ctx.errorCode.includes('client_closed');
+    const ok = upstreamStatus >= 200 && upstreamStatus < 300 && !errorCode;
+    const isClientClose = errorCode != null && errorCode.includes('client_closed');
     const outcome: 'ok' | 'error' | 'client_closed' = ok
       ? 'ok'
       : isClientClose
@@ -196,6 +264,11 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
     let requestTotalMicro: bigint | null = null;
 
     const reconcileStart = Date.now();
+    // Did THIS call actually write the attempt row (gate passed), vs. no-op on an already-settled
+    // replay? Only a real write should emit request/token/spend metrics — so a crash-recovery replay
+    // (idempotency-gate conflict) never double-counts. Set INSIDE the tx, read AFTER the retry loop
+    // (so a transient-retry that rolls back + re-runs still counts exactly once).
+    let attemptSettled = false;
     const settle = (): Promise<void> =>
       withOrg(ctx.deps.db, policy.orgId, async (tx) => {
         // step 0: serialize concurrent settles OF THE SAME REQUEST (auto-releases at commit).
@@ -214,12 +287,12 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
           .insert(requestAttempts)
           .values({
             requestId,
-            attemptNumber: ctx.attemptNumber,
+            attemptNumber,
             orgId: policy.orgId,
             provider,
             model,
             outcome,
-            errorCode: ctx.errorCode,
+            errorCode,
             inputTokens: canonical.inputTokens,
             outputTokens: canonical.outputTokens,
             cachedReadTokens: canonical.cachedReadTokens,
@@ -230,17 +303,18 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
             usageEstimated: canonical.usageEstimated,
             servedUnderBudgetFallback: ctx.servedUnderBudgetFallback,
             elapsedMs,
-            ttftMs: ctx.timings.firstByte ?? null,
+            ttftMs,
           })
           .onConflictDoNothing({
             target: [requestAttempts.requestId, requestAttempts.attemptNumber],
           })
           .returning({ requestId: requestAttempts.requestId });
         if (gate.length === 0) return; // already settled — whole tx no-ops, no double charge
+        attemptSettled = true; // this call inserted the attempt row → its metrics may emit (below)
 
         // step 2: per-attempt counter bump (scopes incl. this attempt's provider; §1.8). request_count
         // increments once per logical request, only when the final attempt succeeded (§4.4).
-        const rc = ctx.isFinalAttempt && outcome === 'ok' ? 1 : 0;
+        const rc = isFinal && outcome === 'ok' ? 1 : 0;
         const costToAdd = costStr ?? '0';
         const scopes: Array<{ scopeType: BudgetScopeType; scopeId: string }> = [
           { scopeType: 'virtual_key', scopeId: policy.virtualKeyId },
@@ -314,7 +388,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
           }));
         }
 
-        if (ctx.isFinalAttempt) {
+        if (isFinal) {
           // step 3: aggregate the ledger into the ONE requests row (PK-collision idempotent, §4.3).
           const agg = (
             await tx
@@ -356,7 +430,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
             endpoint: ctx.endpoint ?? 'chat_completions', // NOT NULL; default preserves the pre-/v1/messages behavior
 
             status: finalStatus,
-            errorCode: ctx.errorCode,
+            errorCode,
             httpStatus: upstreamStatus || null,
             stream: ctx.stream,
             inputTokens: agg.inTok,
@@ -369,7 +443,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
             costUsd: agg.cost,
             unitPrices: cost.unitPrices,
             latencyMs: elapsedMs,
-            ttftMs: ctx.timings.firstByte ?? null,
+            ttftMs,
             fallbackFrom: ctx.fallbackFrom.length > 0 ? ctx.fallbackFrom : null,
             routingRuleId: ctx.routeResult?.routingRuleId ?? null,
             configSnapshotHash: policy.configSnapshotHash,
@@ -429,7 +503,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
     // Sticky session affinity (15 §4.5): a successful dispatch pins the session to the served candidate
     // (resets the 5-min TTL). Final OK attempt only — a failed fallback attempt must never pin. ROUTE
     // reads this pin on the next request in the conversation.
-    if (ctx.isFinalAttempt && outcome === 'ok' && ctx.knobs.sessionId !== null) {
+    if (isFinal && outcome === 'ok' && ctx.knobs.sessionId !== null) {
       const served = ctx.activeCandidate ?? ctx.candidate;
       if (served)
         ctx.deps.sessionPinStore.set(sessionPinKey(policy.orgId, ctx.knobs.sessionId), served);
@@ -441,7 +515,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
     // committed post minus the spend this WHOLE request added (requestTotalMicro = SUM of all attempts),
     // so a band crossed by an earlier billed fallback attempt is still detected — using only the final
     // attempt's cost overstated pre and silently swallowed that crossing (red-team audit F8).
-    if (ctx.isFinalAttempt && postCounters && requestTotalMicro && requestTotalMicro > 0n) {
+    if (isFinal && postCounters && requestTotalMicro && requestTotalMicro > 0n) {
       const captured = postCounters;
       const deltaMicro = requestTotalMicro;
       void withOrg(ctx.deps.db, policy.orgId, (tx) =>
@@ -460,7 +534,7 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
     // §3.1 burst heuristic: track this request in the in-process per-key RPM window (all final requests
     // count, not just billed ones). On a spike fire a deduped burst event — fire-and-forget, off the
     // latency path. The tracker is in-process (resets on restart); the DB write is the only I/O.
-    if (ctx.isFinalAttempt) {
+    if (isFinal) {
       const burst = ctx.deps.burstTracker.record(policy.virtualKeyId, now);
       if (burst.fire) {
         void withOrg(ctx.deps.db, policy.orgId, (tx) =>
@@ -473,6 +547,27 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
         ).catch((err: unknown) => ctx.req.log.warn({ err, requestId }, 'burst event fire failed'));
       }
     }
+
+    // Request-path catalog (§6.3). Only on a real write (not a replay no-op). requests_total +
+    // request_duration_ms are per LOGICAL request → the final attempt only. tokens_total +
+    // spend_usd_total mirror the per-attempt counter bump (`billed`), so multi-attempt spend sums
+    // across attempts exactly as spend_counters does. provider/model are the served candidate
+    // (post-route catalog) — the cardinality guard in metrics.ts maps a null to 'unknown'.
+    if (attemptSettled) {
+      if (isFinal) {
+        recordRequestCompletion(finalStatus, provider, model, ctx.endpoint);
+        observeRequestDuration(provider, model, ctx.stream, elapsedMs);
+      }
+      // Mirror the counter-bump predicate EXACTLY (see `billed` in step 2): compare the µUSD bigint,
+      // not the formatted string — `costStr !== '0'` is true for a computed zero ("0.000000"), which
+      // would emit spend_usd_total for $0 error attempts that spend_counters deliberately skips.
+      const rcForMetrics = isFinal && outcome === 'ok' ? 1 : 0;
+      const billedForMetrics = (cost.costMicroUsd ?? 0n) !== 0n || rcForMetrics !== 0;
+      if (billedForMetrics) {
+        recordSpendUsd(policy.orgId, provider, model, cost.costMicroUsd);
+        recordTokens(provider, model, canonical);
+      }
+    }
   } catch (err) {
     // Post-response: the client already has its answer. Losing a spend row is bad, but throwing here
     // would crash the request handler for a response that's already gone. The `lost` payload is the
@@ -482,20 +577,60 @@ export async function runReconcile(ctx: PipelineContext): Promise<void> {
         err,
         requestId,
         lost: {
-          attemptNumber: ctx.attemptNumber,
+          attemptNumber,
           orgId: policy.orgId,
           virtualKeyId: policy.virtualKeyId,
           teamId: policy.teamId, // scope needed to replay the team-scope counter bump
           provider: ctx.activeCandidate?.provider ?? null, // served provider/model → recompute cost
           model: ctx.activeCandidate?.model ?? null,
-          errorCode: ctx.errorCode,
+          errorCode,
           upstreamStatus,
-          isFinalAttempt: ctx.isFinalAttempt,
+          isFinalAttempt: isFinal,
           usage: ctx.usage, // token counts → cost; with provider/model the settle is hand-replayable
         },
       },
       'spend_write_lost — reconcile failed after retries; spend not recorded',
     );
     spendWriteLostTotal.inc();
+  } finally {
+    // WHY the isFinalAttempt gate (red-team P0). DISPATCH also calls runReconcile for NON-FINAL
+    // attempts — dispatch.ts's retryable-failure branch and runStreamChain's pre-commit failure branch
+    // — purely to land that attempt's ledger row before advancing to the next candidate. Releasing
+    // there freed the WHOLE pre-dispatch hold while the request was still in flight and about to
+    // dispatch a possibly PRICIER fallback, and nothing re-reserves (BUDGET runs exactly once,
+    // pre-dispatch, from the route). A concurrent request on the same scope then read reserved=0,
+    // passed the same enforce cap, took its own hold, and both settled — ~2× a hard cap off one retry.
+    // That nullified H2's atomic reservation during precisely the retry window it exists for, and made
+    // the max-over-chain hold sizing (estimateRequestCostMicro) inert. So the hold is kept until the
+    // request has genuinely stopped dispatching: isFinalAttempt is set true by every terminating path
+    // (success, terminal/exhausted upstream error, client disconnect, stream commit) and only there.
+    // Released AFTER the settle above, not before it, so `reserved` drops only once `spent` has
+    // risen — a concurrent compare never sees a window with neither.
+    // NOT a hold leak on the non-final path: every exit that ends WITHOUT a final reconcile (a
+    // pre-dispatch throw, an exhausted chain that throws before reconciling, a hijacked stream whose
+    // reconcile hit RECONCILE_TIMEOUT_MS and was abandoned) is covered by the route's finally in
+    // chat-completions/messages/embeddings, which calls this same release. Idempotent via
+    // ctx.budgetReservationSettled, set SYNCHRONOUSLY before the DB write, so the route's release and
+    // this one can never both credit the counter.
+    //
+    // AND the identity check — belt to the `isFinal` braces, deliberately. releaseBudgetReservation
+    // releases ctx's CURRENT hold, whatever that is by the time an ABANDONED reconcile
+    // (guardedReconcile's RECONCILE_TIMEOUT_MS arm) gets here; if the chain advanced meanwhile, that is
+    // the SUCCESSOR's hold and crediting it back frees money authorizing a candidate still dispatching.
+    // The `isFinal` snapshot already covers every shape reachable TODAY, because a chain only ever
+    // advances off a NON-final attempt (runStreamChain: isFinalAttempt = !hasNext, and it rethrows
+    // rather than advancing when hasNext is false) — so an invocation entered final never has a
+    // successor to steal from. This check costs one reference compare and keeps that from being a
+    // silent load-bearing assumption about dispatch's control flow. Reference identity is the right
+    // test: runCandidateBudget assigns a FRESH BudgetHold object per candidate, never mutates one in
+    // place. When it does not match, the hold this invocation was entered under was already released by
+    // the advance itself (releaseHold at the end of runCandidateBudget), and the successor's hold
+    // belongs to the successor's own final reconcile — or, failing that, to the route's finally, which
+    // still fires because declining here also leaves budgetReservationSettled false.
+    // Residual: runCandidateBudget's sameHold() early-return keeps the SAME object across an advance,
+    // which this compare cannot distinguish. Harmless — it is the same money on the same rows,
+    // authorizing both candidates identically — and closing it properly needs a hold generation counter
+    // on PipelineContext.
+    if (isFinal && heldAtEntry === ctx.budgetReservation) await releaseBudgetReservation(ctx);
   }
 }

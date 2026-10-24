@@ -45,7 +45,7 @@ export function assertSafeBaseUrl(
   if (url.hostname.includes('%') || [...url.hostname].some((ch) => ch.charCodeAt(0) > 0x7e))
     throw invalid('base_url host contains percent-encoding or non-ASCII');
 
-  const host = url.hostname.toLowerCase();
+  const host = normalizeHost(url.hostname);
   if (trustedHosts.has(host)) return;
 
   if (host === 'localhost' || host.endsWith('.localhost'))
@@ -68,6 +68,18 @@ export function assertSafeBaseUrl(
 
 function invalid(message: string): SpillwayError {
   return new SpillwayError('invalid_request', message, { httpStatus: 422 });
+}
+
+/**
+ * Lowercase and strip trailing DNS root-label dot(s). `localhost.` is a valid FQDN form of
+ * `localhost` — any resolver treats them identically — but `===` and `.endsWith('.localhost')`
+ * below do not, so an untrimmed trailing dot (`https://localhost./hook`,
+ * `https://metadata.google.internal./x`) matched neither guard branch and sailed through. Strip
+ * ALL trailing dots (not just one): multiple trailing dots are never a distinct legitimate host,
+ * so over-normalizing here has no false-positive cost.
+ */
+function normalizeHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/\.+$/, '');
 }
 
 function looksNumericHost(host: string): boolean {

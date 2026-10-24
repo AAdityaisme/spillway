@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { Encryptor, providerKeyAad } from './encryptor.js';
+import { Encryptor, makeEncryptor, providerKeyAad } from './encryptor.js';
+import { testConfig } from '../../test/helpers/config.js';
 
 const key = randomBytes(32);
 const enc = new Encryptor(new Map([[1, key]]), 1);
@@ -50,5 +51,56 @@ describe('Encryptor', () => {
   it('backward-compat: a legacy no-AAD ciphertext still decrypts when an AAD is supplied', () => {
     const legacy = enc.encrypt('sk-legacy'); // sealed before AAD binding
     expect(enc.decrypt(legacy, providerKeyAad('org1', 'key1'))).toBe('sk-legacy');
+  });
+});
+
+// ADR-014 rotation: every configured key version is loaded for decrypt, only the current one seals.
+describe('makeEncryptor', () => {
+  const v1 = randomBytes(32).toString('base64');
+  const v2 = randomBytes(32).toString('base64');
+
+  it('a V1-only config behaves exactly as before — one key, sealing at v1', () => {
+    const only = makeEncryptor(testConfig({ SPILLWAY_ENC_KEY_V1: v1 }));
+    expect(only.currentVersion).toBe(1);
+    expect(only.encrypt('sk').version).toBe(1);
+    expect(() => only.decrypt({ ...only.encrypt('sk'), version: 2 })).toThrow(/no encryption key/);
+  });
+
+  it('loads V2 for decrypt while still sealing at v1 (pre-cutover)', () => {
+    const both = makeEncryptor(testConfig({ SPILLWAY_ENC_KEY_V1: v1, SPILLWAY_ENC_KEY_V2: v2 }));
+    const atV2 = makeEncryptor(
+      testConfig({
+        SPILLWAY_ENC_KEY_V1: v1,
+        SPILLWAY_ENC_KEY_V2: v2,
+        SPILLWAY_ENC_KEY_CURRENT: '2',
+      }),
+    ).encrypt('sk-v2');
+    expect(both.encrypt('sk').version).toBe(1);
+    expect(both.decrypt(atV2)).toBe('sk-v2'); // the v2 row a flipped peer wrote
+  });
+
+  it('seals at v2 and still opens v1 rows once the current version is flipped', () => {
+    const before = makeEncryptor(testConfig({ SPILLWAY_ENC_KEY_V1: v1 }));
+    const after = makeEncryptor(
+      testConfig({
+        SPILLWAY_ENC_KEY_V1: v1,
+        SPILLWAY_ENC_KEY_V2: v2,
+        SPILLWAY_ENC_KEY_CURRENT: '2',
+      }),
+    );
+    expect(after.encrypt('new').version).toBe(2);
+    expect(after.decrypt(before.encrypt('old'))).toBe('old');
+  });
+
+  it('fails closed once V1 is retired: a surviving v1 row does not decrypt to garbage', () => {
+    const legacyRow = makeEncryptor(testConfig({ SPILLWAY_ENC_KEY_V1: v1 })).encrypt('old');
+    const retired = makeEncryptor(
+      testConfig({
+        SPILLWAY_ENC_KEY_V1: undefined,
+        SPILLWAY_ENC_KEY_V2: v2,
+        SPILLWAY_ENC_KEY_CURRENT: '2',
+      }),
+    );
+    expect(() => retired.decrypt(legacyRow)).toThrow(/no encryption key for version 1/);
   });
 });

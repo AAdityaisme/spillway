@@ -52,9 +52,10 @@ export interface DecisionHandlers {
   ): Promise<void>;
 }
 
-async function lockPending(tx: Tx, approvalId: string): Promise<ApprovalRequestRow> {
+async function lockPending(tx: Tx, orgId: string, approvalId: string): Promise<ApprovalRequestRow> {
   const rows = (await tx.execute(sql`
-    select * from approval_requests where id = ${approvalId} for update`)) as unknown as ApprovalRequestRow[];
+    select * from approval_requests where id = ${approvalId} and org_id = ${orgId}
+    for update`)) as unknown as ApprovalRequestRow[];
   const approval = rows[0];
   if (!approval || approval.status !== 'pending') {
     throw new SpillwayError('not_pending', 'approval is not pending', { httpStatus: 409 });
@@ -151,7 +152,7 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
     comment?: string,
   ): Promise<'pending' | 'approved' | 'denied'> {
     const { outcome, orgOut, stepAdvanced } = await withOrg(db, orgId, async (tx) => {
-      const approval = await lockPending(tx, approvalId);
+      const approval = await lockPending(tx, orgId, approvalId);
       const step = await loadStep(tx, approvalId, approval.current_step_index);
       assertCanVote(approval, step, decidedBy, role);
 
@@ -171,19 +172,19 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
           update approval_requests
              set status = 'approved', decided_by = ${decidedBy}, decided_at = now(),
                  decision_comment = ${comment ?? null}
-           where id = ${approvalId}`);
+           where id = ${approvalId} and org_id = ${orgId}`);
         await neutralizeTimers(tx, approvalId);
       } else if (result === 'denied') {
         await tx.execute(sql`
           update approval_requests
              set status = 'denied', decided_by = ${decidedBy}, decided_at = now(),
                  decision_comment = ${comment ?? null}
-           where id = ${approvalId}`);
+           where id = ${approvalId} and org_id = ${orgId}`);
         await neutralizeTimers(tx, approvalId);
       } else {
         await tx.execute(sql`
           update approval_requests set current_step_index = ${approval.current_step_index}
-           where id = ${approvalId}`);
+           where id = ${approvalId} and org_id = ${orgId}`);
       }
       // Audit the vote + terminal outcome (20 §4; ch18 §2.8). Same tx as the decision so the trail
       // can't diverge from the state change; actor comes from the request's orgContext.
@@ -242,7 +243,7 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
     comment?: string,
   ): Promise<void> {
     await withOrg(db, orgId, async (tx) => {
-      const approval = await lockPending(tx, approvalId);
+      const approval = await lockPending(tx, orgId, approvalId);
       const step = await loadStep(tx, approvalId, approval.current_step_index);
       assertCanVote(approval, step, decidedBy, role);
 
@@ -259,7 +260,7 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
         update approval_requests
            set status = 'denied', decided_by = ${decidedBy}, decided_at = now(),
                decision_comment = ${comment ?? null}
-         where id = ${approvalId}`);
+         where id = ${approvalId} and org_id = ${orgId}`);
       await neutralizeTimers(tx, approvalId);
       await appendAudit(
         tx,
@@ -285,7 +286,7 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
     opts?: { admin?: boolean; comment?: string },
   ): Promise<void> {
     await withOrg(db, orgId, async (tx) => {
-      const approval = await lockPending(tx, approvalId);
+      const approval = await lockPending(tx, orgId, approvalId);
       if (approval.requested_by !== actorId && !opts?.admin) {
         throw new SpillwayError('forbidden', 'only requester or admin may cancel', {
           httpStatus: 403,
@@ -295,7 +296,7 @@ export function makeDecisionHandlers(deps: DecideDeps): DecisionHandlers {
         update approval_requests
            set status = 'cancelled', decided_by = ${actorId}, decided_at = now(),
                decision_comment = ${opts?.comment ?? null}
-         where id = ${approvalId}`);
+         where id = ${approvalId} and org_id = ${orgId}`);
       await neutralizeTimers(tx, approvalId);
       await appendAudit(
         tx,

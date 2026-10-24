@@ -11,7 +11,7 @@ import { users, orgs, orgMembers } from '../apps/server/src/db/schema.js';
  * Refuses to run in production — the whole local-JWKS path is unreachable there anyway.
  */
 const DEV_SUB = 'user_dev0000000000000000000001';
-const DEV_EMAIL = 'dev@spillway.dev';
+const DEV_EMAIL = 'dev@spillway.cloud';
 
 async function main(): Promise<void> {
   const config = loadConfig();

@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://api.spillway.dev",
+      "url": "https://api.spillway.cloud",
       "description": "Production"
     },
     {
@@ -30,7 +30,7 @@
       "adminKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Admin API key `mka-…` for machine control-plane access. Requires `X-Spillway-Org`."
+        "description": "Admin API key `mk-admin-…` for machine control-plane access. Requires `X-Spillway-Org`."
       }
     },
     "schemas": {
@@ -717,6 +717,59 @@
             "virtualKey": []
           }
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Pin this request to a routing session (sticky provider/model across a conversation). Header wins over body `session_id`.",
+              "example": "chat-7f3a2b"
+            },
+            "required": false,
+            "name": "x-spillway-session-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated capability hard-filter (e.g. `vision,tool_use`) — candidates lacking any listed capability are excluded. Header wins over body `spillway.require_capabilities`. Unknown capability → 422.",
+              "example": "vision,tool_use"
+            },
+            "required": false,
+            "name": "x-spillway-require-capabilities",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Disambiguate a model name served by multiple providers. Must be a known provider AND on the key's allow-list (403 `model_not_allowed` otherwise).",
+              "example": "anthropic"
+            },
+            "required": false,
+            "name": "x-spillway-provider",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opt into per-request tracing: `on` / `1` / `true` (case-insensitive). The response then carries `x-spillway-trace-id`.",
+              "example": "on"
+            },
+            "required": false,
+            "name": "x-spillway-trace",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "JSON object of request tags merged into the request `metadata` for reporting (body `metadata` wins on collision). Bounded: ≤16 keys total, key ≤64 chars, value ≤256 chars.",
+              "example": "{\"team\":\"platform\",\"feature\":\"chat\"}"
+            },
+            "required": false,
+            "name": "x-spillway-tags",
+            "in": "header"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -796,6 +849,59 @@
         "security": [
           {
             "virtualKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Pin this request to a routing session (sticky provider/model across a conversation). Header wins over body `session_id`.",
+              "example": "chat-7f3a2b"
+            },
+            "required": false,
+            "name": "x-spillway-session-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated capability hard-filter (e.g. `vision,tool_use`) — candidates lacking any listed capability are excluded. Header wins over body `spillway.require_capabilities`. Unknown capability → 422.",
+              "example": "vision,tool_use"
+            },
+            "required": false,
+            "name": "x-spillway-require-capabilities",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Disambiguate a model name served by multiple providers. Must be a known provider AND on the key's allow-list (403 `model_not_allowed` otherwise).",
+              "example": "anthropic"
+            },
+            "required": false,
+            "name": "x-spillway-provider",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opt into per-request tracing: `on` / `1` / `true` (case-insensitive). The response then carries `x-spillway-trace-id`.",
+              "example": "on"
+            },
+            "required": false,
+            "name": "x-spillway-trace",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "JSON object of request tags merged into the request `metadata` for reporting (body `metadata` wins on collision). Bounded: ≤16 keys total, key ≤64 chars, value ≤256 chars.",
+              "example": "{\"team\":\"platform\",\"feature\":\"chat\"}"
+            },
+            "required": false,
+            "name": "x-spillway-tags",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -895,9 +1001,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -943,9 +1046,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1022,9 +1122,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1072,9 +1169,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1155,9 +1249,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1203,9 +1294,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1285,9 +1373,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1368,9 +1453,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1419,9 +1501,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1467,9 +1546,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1546,9 +1622,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1629,9 +1702,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1681,9 +1751,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1729,9 +1796,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1815,9 +1879,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1867,9 +1928,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1915,9 +1973,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2041,9 +2096,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2123,12 +2175,10 @@
           "Admin keys"
         ],
         "summary": "List admin API keys.",
+        "description": "⚠️ **Admin-key authentication is not yet enabled.** Keys can be minted, listed, and revoked, but no request path accepts them as a credential yet — a minted key grants nothing until the verify path ships.",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2171,12 +2221,10 @@
           "Admin keys"
         ],
         "summary": "Mint an admin API key (plaintext returned ONCE).",
+        "description": "⚠️ **Admin-key authentication is not yet enabled.** The key is minted and revealed once, and the response carries a `warning` field saying so — it does not grant access until the verify path ships. Do not build automation against admin keys yet.",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2254,9 +2302,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2337,9 +2382,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2385,9 +2427,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2505,9 +2544,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2604,9 +2640,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2656,9 +2689,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2704,9 +2734,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2890,9 +2917,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3078,9 +3102,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3130,9 +3151,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3178,9 +3196,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3582,9 +3597,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3988,9 +4000,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4040,9 +4049,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4088,9 +4094,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4262,9 +4265,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4435,9 +4435,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4487,9 +4484,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4548,9 +4542,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4600,9 +4591,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4650,9 +4638,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4711,9 +4696,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4759,9 +4741,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4865,9 +4844,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4957,9 +4933,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5009,9 +4982,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5057,9 +5027,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5109,9 +5076,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5170,9 +5134,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5231,9 +5192,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5292,9 +5250,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5340,9 +5295,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5520,9 +5472,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5683,9 +5632,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5735,9 +5681,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5783,9 +5726,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5860,7 +5800,8 @@
                       "string",
                       "null"
                     ],
-                    "maxLength": 120
+                    "maxLength": 120,
+                    "pattern": "^\\s*@every\\s+\\d+[smh]\\s*$"
                   },
                   "notifyOnlyUntil": {
                     "type": [
@@ -5915,9 +5856,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5967,9 +5905,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6039,7 +5974,8 @@
                       "string",
                       "null"
                     ],
-                    "maxLength": 120
+                    "maxLength": 120,
+                    "pattern": "^\\s*@every\\s+\\d+[smh]\\s*$"
                   },
                   "notifyOnlyUntil": {
                     "type": [
@@ -6087,9 +6023,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6139,9 +6072,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6187,9 +6117,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6275,9 +6202,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6327,9 +6251,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6377,9 +6298,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6429,9 +6347,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6481,9 +6396,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6533,9 +6445,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6585,9 +6494,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6637,9 +6543,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [

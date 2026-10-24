@@ -14,12 +14,12 @@ governs, and logs every request behind budgets, approvals, anomaly detection, an
 
 ## The two planes
 
-| Plane   | Base URL | Auth                                                   | What it is                                                    |
-| ------- | -------- | ------------------------------------------------------ | ------------------------------------------------------------- |
-| Data    | `/v1/*`  | `Authorization: Bearer mk-live-…` (or `x-api-key`)     | The LLM gateway. Your SDK points here.                        |
-| Control | `/api/*` | Session token, or `mka-…` admin key + `X-Spillway-Org` | Dashboard and machine API: keys, budgets, approvals, reports. |
+| Plane   | Base URL | Auth                                                        | What it is                                                    |
+| ------- | -------- | ----------------------------------------------------------- | ------------------------------------------------------------- |
+| Data    | `/v1/*`  | `Authorization: Bearer mk-live-…` (or `x-api-key`)          | The LLM gateway. Your SDK points here.                        |
+| Control | `/api/*` | Session token, or `mk-admin-…` admin key + `X-Spillway-Org` | Dashboard and machine API: keys, budgets, approvals, reports. |
 
-Production: `https://api.spillway.dev`. Local dev: `http://localhost:3000` serves both.
+Production: `https://api.spillway.cloud`. Local dev: `http://localhost:3000` serves both.
 
 ## Regenerating the reference
 

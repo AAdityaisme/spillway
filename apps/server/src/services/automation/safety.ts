@@ -80,6 +80,11 @@ function ratioOf(payload: EventPayload): number | undefined {
   if (typeof today === 'string' && typeof baseline === 'string') {
     const b = parseUsd(baseline);
     if (b === 0n) return undefined;
+    // The RESULT is a dimensionless ratio compared against the `min_ratio` threshold — not a money
+    // value that is ever stored or spent. Both operands are already integer µUSD, and
+    // Number(bigint) is exact below 2^53 µUSD (~$9e9), so the division is the only float here and
+    // it is the correct type for a ratio. Reviewed 2026-08-08.
+    // nosemgrep: money-no-number-coercion
     return Number(parseUsd(today)) / Number(b);
   }
   return undefined;

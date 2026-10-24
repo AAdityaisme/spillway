@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getNonce, htmlCsp } from './csp.js';
 
 /**
  * Baseline security response headers (10-security §7.1). Registered as a ROOT-level onSend hook (not an
@@ -12,9 +13,11 @@ import type { FastifyInstance } from 'fastify';
  *   - Universally safe headers (nosniff, frame-deny, referrer, permissions, HSTS on TLS) everywhere —
  *     none of these affect script/style execution, so no page can break.
  *   - A strict `default-src 'none'` CSP ONLY on JSON/CSV API responses, where there is nothing to render.
- *   - `frame-ancestors 'none'` CSP everywhere (clickjacking defense; does not restrict scripts/styles).
- * A full script-src CSP for the SPA/landing is a deliberate follow-up (needs per-page nonces to avoid
- * breaking the WebGL landing) and is tracked, not silently dropped.
+ *   - A nonce-based `script-src` on HTML DOCUMENTS (see csp.ts). The document routes in static.ts
+ *     mint the nonce and stamp it into their script tags; this hook only reads it back. A request
+ *     without a nonce is by definition not a document we rendered, so it never gets that policy.
+ *   - `frame-ancestors 'none'` CSP everywhere else (clickjacking defense; does not restrict
+ *     scripts/styles), which covers static assets — a CSP on a .css or .js response gates nothing.
  */
 export function addSecurityHeaders(fastify: FastifyInstance): void {
   fastify.addHook('onSend', async (request, reply, payload) => {
@@ -27,13 +30,30 @@ export function addSecurityHeaders(fastify: FastifyInstance): void {
     );
     reply.header('Cross-Origin-Opener-Policy', 'same-origin');
 
-    // HSTS only makes sense over TLS; behind Fly's proxy the original scheme is x-forwarded-proto.
-    const proto = (request.headers['x-forwarded-proto'] as string | undefined) ?? request.protocol;
-    if (proto === 'https')
+    // HSTS only makes sense over TLS. Read `request.protocol`, NOT the raw x-forwarded-proto header:
+    // Fastify already derives protocol from the trusted hop (see TRUST_PROXY_HOPS in app.ts), so the
+    // header is client-controlled input. Trusting it let a plaintext client pin itself with a
+    // one-year HSTS header, and behind two proxies the header is a LIST ("https,http") that never
+    // equals 'https' — silently dropping HSTS on genuinely TLS traffic. Both bugs, one line.
+    if (request.protocol === 'https')
       reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
+    const nonce = getNonce(request);
     const contentType = String(reply.getHeader('content-type') ?? '');
-    if (contentType.includes('application/json') || contentType.includes('text/csv')) {
+    if (nonce) {
+      reply.header('Content-Security-Policy', htmlCsp(nonce));
+    } else if (contentType.includes('text/html')) {
+      // FAIL CLOSED. An HTML document with no nonce did not come from the document routes in
+      // static.ts, so its script tags are unstamped and a nonce policy would block its own scripts
+      // anyway. Serving it with only `frame-ancestors` would leave a page with NO script-src —
+      // silently, which is how /app/index.html slipped past @fastify/static's `index: false` and
+      // shipped uncovered. `script-src 'none'` turns any future gap into a blank page in review
+      // instead of a hole in production. Every legitimate document goes through those routes.
+      reply.header(
+        'Content-Security-Policy',
+        "default-src 'none'; script-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+      );
+    } else if (contentType.includes('application/json') || contentType.includes('text/csv')) {
       // API/CSV responses render nothing — lock them all the way down.
       reply.header(
         'Content-Security-Policy',

@@ -6,32 +6,56 @@ title = "Spillway gitleaks"
 [extend]
 useDefault = true
 
+# Each Spillway rule carries its OWN allowlist below, scoped to just that rule's findings --
+# deliberately NOT a top-level [allowlist]. A top-level [allowlist].paths suppresses EVERY rule
+# (every built-in cloud/SaaS detector -- AWS, GCP, Slack, private keys, ...) across the listed
+# paths, not just the two rules below. Red-team F5, 2026-08-08: proven by mutation that a
+# blanket path exemption over *.test.ts and apps/server/test/ hid a planted AWS-shaped key from
+# gitleaks entirely; scoping the exemption per-rule leaves the built-in detectors live in test
+# files while still letting known-fake mk-live-/mk-admin- fixture values through.
 [[rules]]
 id = "spillway-virtual-key"
 description = "Spillway virtual key (mk-live-…)"
 regex = '''mk-live-[A-Za-z0-9_-]{16,}'''
 tags = ["spillway", "credential"]
 
+  [rules.allowlist]
+  description = "Test fixtures, examples, and generated dev material carry only fake/local mk-live- values."
+  paths = [
+    '''.*\.test\.ts$''',
+    '''.*/test-utils/.*''',
+    '''apps/server/test/.*''',
+    '''tools/(seed|dev-token)\..*''',
+    '''\.env\.example$''',
+    '''\.dev-auth-key\.json$''',
+    '''pnpm-lock\.yaml$''',
+  ]
+  # The mk-live- prefix appears as a literal string in code/docs that GENERATES or DOCUMENTS it.
+  regexes = [
+    '''mk-live-…''',
+    '''mk-live-<''',
+  ]
+
 [[rules]]
 id = "spillway-admin-api-key"
-description = "Spillway admin API key (mka-…)"
-regex = '''mka-[A-Za-z0-9_-]{16,}'''
+# Was `mka-…` — a shape auth/keys.ts NEVER generated (real prefix: mk-admin- + 43 base62).
+# A leaked real admin key was invisible to this rule until the 2026-08-08 docs audit caught it.
+description = "Spillway admin API key (mk-admin-…)"
+regex = '''mk-admin-[A-Za-z0-9_-]{16,}'''
 tags = ["spillway", "credential"]
 
-[allowlist]
-description = "Test fixtures, examples, and generated dev material carry only fake/local credentials."
-paths = [
-  '''.*\.test\.ts$''',
-  '''.*/test-utils/.*''',
-  '''apps/server/test/.*''',
-  '''tools/(seed|dev-token)\..*''',
-  '''\.env\.example$''',
-  '''\.dev-auth-key\.json$''',
-  '''pnpm-lock\.yaml$''',
-]
-# The mk-live-/mka- prefixes appear as literal strings in code that GENERATES or DOCUMENTS them.
-regexes = [
-  '''mk-live-…''',
-  '''mka-…''',
-  '''mk-live-<''',
-]
+  [rules.allowlist]
+  description = "Test fixtures, examples, and generated dev material carry only fake/local mk-admin- values."
+  paths = [
+    '''.*\.test\.ts$''',
+    '''.*/test-utils/.*''',
+    '''apps/server/test/.*''',
+    '''tools/(seed|dev-token)\..*''',
+    '''\.env\.example$''',
+    '''\.dev-auth-key\.json$''',
+    '''pnpm-lock\.yaml$''',
+  ]
+  regexes = [
+    '''mk-admin-…''',
+    '''mk-admin-<''',
+  ]

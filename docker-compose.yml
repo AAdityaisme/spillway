@@ -12,7 +12,18 @@ services:
     ports:
       - '5432:5432'
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      # postgres:18+ images store data under major-version-specific directories and want the mount
+      # at /var/lib/postgresql, NOT /var/lib/postgresql/data (docker-library/postgres#1259). With the
+      # old mount point the container refuses to boot: "there appears to be PostgreSQL data in
+      # /var/lib/postgresql/data (unused mount/volume)". Local dev only — the integration suite uses
+      # testcontainers and never touches this.
+      #
+      # MIGRATING AN EXISTING VOLUME: a pg_data created under the old mount holds PGDATA at the
+      # volume ROOT. Remounted one level up, the entrypoint looks in /var/lib/postgresql/18/docker,
+      # finds it empty, and runs initdb — you silently get a BRAND-NEW EMPTY DATABASE while the old
+      # cluster files sit unreferenced in the same volume. Run `docker compose down -v` first and
+      # re-seed (`pnpm db:migrate && pnpm db:seed`); there is nothing here worth preserving.
+      - pg_data:/var/lib/postgresql
       - ./apps/server/src/db/migrations/init-roles.sql:/docker-entrypoint-initdb.d/01-init-roles.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U spillway -d spillway_dev']

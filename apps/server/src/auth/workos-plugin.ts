@@ -53,6 +53,14 @@ export function makeAuthHook(deps: AuthDeps) {
   const jwks = deps.jwks ?? makeWorkosJwks(deps.config);
   const verifyOpts = deps.verifyOpts ?? verifyOptionsFromConfig(deps.config);
 
+  // Subs whose users row this process has confirmed. The FK race the await below closes only
+  // exists on a sub's FIRST request (org_members insert racing the un-awaited users upsert), so
+  // only that first sighting pays the round-trip on the auth path; after a confirmed upsert the
+  // mirror reverts to M25 fire-and-forget (refreshes email/name, adds no latency). Bounded by
+  // active-user count; per-process, so each instance re-confirms once after restart — harmless,
+  // the upsert is idempotent.
+  const mirroredSubs = new Set<string>();
+
   // L29: startup warning so operators know aud enforcement is disabled.
   if (deps.config.NODE_ENV === 'production' && !deps.config.WORKOS_JWT_AUD) {
     console.warn(
@@ -68,9 +76,23 @@ export function makeAuthHook(deps: AuthDeps) {
     }
     const user = await verifyWorkosJwt(header.slice('Bearer '.length), jwks, verifyOpts);
     request.user = user;
-    // M25: mirror as fire-and-forget — never block or fail auth on a write hiccup.
-    mirrorUser(deps.db, user).catch((err) => {
-      request.log.error({ err }, 'mirrorUser failed (non-fatal, auth proceeds)');
-    });
+    // M25 kept auth non-fatal on a mirror hiccup, but fire-and-forget opened a first-request
+    // race: a brand-new user's org-create could insert org_members(user_id) BEFORE the
+    // un-awaited users upsert committed → 23503 FK violation (intermittent 404/500 on the
+    // very first action; caught as the PR #1 governance-crud flake). Await the upsert so
+    // handler writes are ordered after it; keep the catch so a write hiccup still never
+    // fails auth (the FK then surfaces in the handler, which is the honest failure site).
+    if (mirroredSubs.has(user.sub)) {
+      void mirrorUser(deps.db, user).catch((err) => {
+        request.log.error({ err }, 'mirrorUser failed (non-fatal, auth proceeds)');
+      });
+    } else {
+      // Not added to the set on failure — the next request retries the awaited path.
+      await mirrorUser(deps.db, user)
+        .then(() => mirroredSubs.add(user.sub))
+        .catch((err) => {
+          request.log.error({ err }, 'mirrorUser failed (non-fatal, auth proceeds)');
+        });
+    }
   };
 }

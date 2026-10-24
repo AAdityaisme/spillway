@@ -8,7 +8,7 @@ import { sessionPinKey } from '../routing/session-pin.js';
 import { loadCapabilityCatalog } from '../routing/capability-catalog.js';
 import { getResidencyMap, residencyAllows } from '../routing/residency.js';
 import { requiredFeatures, assertSupported, candidateSupports } from '../providers/registry.js';
-import { runGuardrails } from './guardrail-stage.js';
+import { runGuardrails, buildCandidateGuardrail, denyPostRoute } from './guardrail-stage.js';
 import type { ProviderName, Candidate } from '../routing/compile.js';
 import type { CandidateKey } from '../health/store.js';
 import { readSpendSnapshot } from '../budget/snapshot.js';
@@ -192,23 +192,55 @@ export async function runRoute(ctx: PipelineContext, now: Date = new Date()): Pr
     },
   };
 
+  // PASS-2 GUARDRAIL RE-CHECK (red-team P0: "decide once, then the request drifts"). PASS-1 above
+  // judged the model the CLIENT ASKED FOR — its request.model_resolved is the ALIAS head, computed
+  // before resolveRoute ran. Since then a `rewrite_model` rule may have replaced the head outright,
+  // and the chain tail holds models nobody has judged at all. So `deny gpt-4o` used to be defeated by
+  // any rule rewriting an un-denied alias onto gpt-4o. Re-evaluate ONLY the model-dependent policies
+  // (model-guardrails.ts) against each RESOLVED candidate's own activation.
+  //
+  // Skip-not-fail per candidate, exactly like the capability + residency gates above: a denied model
+  // is simply not a dispatchable candidate. If that empties the working chain there is nothing left
+  // to serve, and the answer is the terminal 403 PASS-1 would itself have thrown had it been able to
+  // see the served model — reported against the HEAD's denial (the candidate that would have served).
+  ctx.candidateGuardrail = buildCandidateGuardrail(ctx, resolved, now);
+  const guardrailOk = (c: Candidate): boolean => ctx.candidateGuardrail.check(c) === null;
+  const undenied = ctx.candidateChain.filter(guardrailOk);
+  if (undenied.length === 0) {
+    const headDenial = ctx.candidateGuardrail.check(ctx.candidateChain[0]!)!;
+    await denyPostRoute(ctx, headDenial, ctx.candidateGuardrail, now);
+  }
+  ctx.candidateChain = undenied;
+  ctx.candidate = undenied[0]!;
+  ctx.routeResult = {
+    ...ctx.routeResult,
+    chain: undenied,
+    typedFallbacks: {
+      context_window: ctx.routeResult.typedFallbacks.context_window.filter(guardrailOk),
+      content_policy: ctx.routeResult.typedFallbacks.content_policy.filter(guardrailOk),
+    },
+  };
+
   // Decision log for a routing rewrite (16 §6.2). Distinct decision id (uuidv5 'rewrite') so it never
-  // collides with a guardrail decision (decisionId = requestId) for the same request. Fire-and-forget.
+  // collides with a guardrail decision (decisionId = requestId) for the same request. Fire-and-forget,
+  // but tracked (ADR-033 D6) so app.close() drains it before the DB pool is torn down.
   if (ctx.routeResult.routingRuleId) {
-    void writeDecisionLog(ctx.deps.db, ctx.policy.orgId, {
-      decisionId: uuidv5('rewrite', ctx.requestId),
-      requestId: ctx.requestId,
-      effect: 'rewrite',
-      enforcement: 'enforce',
-      wouldHave: false,
-      evaluatedPolicyIds: [],
-      matchedPolicyIds: [],
-      decidingPolicyId: null,
-      routingRuleId: ctx.routeResult.routingRuleId,
-      reason: null,
-      configSnapshotHash: ctx.policy.configSnapshotHash,
-      inputSnapshot: {},
-      celError: false,
-    });
+    ctx.deps.streamTasks?.track(
+      writeDecisionLog(ctx.deps.db, ctx.policy.orgId, {
+        decisionId: uuidv5('rewrite', ctx.requestId),
+        requestId: ctx.requestId,
+        effect: 'rewrite',
+        enforcement: 'enforce',
+        wouldHave: false,
+        evaluatedPolicyIds: [],
+        matchedPolicyIds: [],
+        decidingPolicyId: null,
+        routingRuleId: ctx.routeResult.routingRuleId,
+        reason: null,
+        configSnapshotHash: ctx.policy.configSnapshotHash,
+        inputSnapshot: {},
+        celError: false,
+      }),
+    );
   }
 }

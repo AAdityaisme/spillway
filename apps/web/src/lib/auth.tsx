@@ -86,19 +86,37 @@ authRef = (() => {
   return { session: t ? { access_token: t } : null, activeOrgId: readActiveOrg() };
 })();
 
-/** Exchanges the httpOnly session cookie for an access token. 401 simply means "not signed in". */
-async function fetchSession(): Promise<Session | null> {
+/**
+ * Result of asking the server who we are. The three-way split is the whole point: only an
+ * AUTHORITATIVE rejection may log a user out.
+ *
+ * Collapsing every non-2xx into "anonymous" was wrong once `/auth/*` became rate limited. A whole
+ * office shares one NAT address, so `/auth/session` — polled on page load and every few minutes —
+ * can return 429 to a perfectly valid session, and the user would be shown the logged-out screen.
+ * Their instinctive retry then hits `/auth/login`, which sits in the tighter bucket. A 5xx or a
+ * WorkOS blip has the same shape: not proof of anything.
+ */
+type SessionResult =
+  | { kind: 'session'; session: Session }
+  | { kind: 'anonymous' } // authoritative: the server says this cookie is not a session
+  | { kind: 'inconclusive' }; // rate limited, server error, or offline — verdict unknown
+
+/** Exchanges the httpOnly session cookie for an access token. Only 401 means "not signed in". */
+async function fetchSession(): Promise<SessionResult> {
   try {
     const res = await fetch('/auth/session', {
       credentials: 'include',
       headers: { accept: 'application/json' },
     });
-    if (!res.ok) return null;
+    if (res.status === 401) return { kind: 'anonymous' };
+    if (!res.ok) return { kind: 'inconclusive' }; // 429 from the limiter, 503, any 5xx
     const body = (await res.json()) as { authenticated?: boolean; access_token?: string };
-    return body.authenticated && body.access_token ? { access_token: body.access_token } : null;
+    return body.authenticated && body.access_token
+      ? { kind: 'session', session: { access_token: body.access_token } }
+      : { kind: 'anonymous' };
   } catch {
     // Network failure is not proof of being signed out; the caller keeps any existing session.
-    return null;
+    return { kind: 'inconclusive' };
   }
 }
 
@@ -119,9 +137,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function bootstrap(initial: boolean): Promise<void> {
-      const s = await fetchSession();
+      const result = await fetchSession();
       if (cancelled) return;
-      if (s) {
+      // An unknown verdict changes nothing: a loading app keeps loading and retries on the next
+      // tick, and an authenticated one stays authenticated. Never demote on a non-answer.
+      if (result.kind === 'inconclusive') return;
+      if (result.kind === 'session') {
+        const s = result.session;
         authRef = { ...authRef, session: s };
         setSession(s);
         setStatus('authenticated');

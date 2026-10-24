@@ -68,7 +68,8 @@ export const decisionLogsRoutes: FastifyPluginAsync<DecisionLogsDeps> = async (f
     const { decisionId } = request.params;
     const rows = (await withOrg(db, orgId, (tx) =>
       tx.execute(
-        sql`select ${publicCols} from decision_logs where decision_id = ${decisionId}::uuid`,
+        sql`select ${publicCols} from decision_logs
+              where decision_id = ${decisionId}::uuid and org_id = ${orgId}::uuid`,
       ),
     )) as unknown as unknown[];
     if (rows.length === 0)

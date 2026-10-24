@@ -9,6 +9,13 @@
  * evaluated; any matching enforcing `deny` blocks — so a routing-layer `rewrite` (PASS 2, ch15) can
  * never shadow a `deny` (PASS 1, here). deny > require_approval > flag; ties break on the smallest id
  * (deterministic + replayable); the deny-vs-allow OUTCOME is order-independent regardless.
+ *
+ * Red-team P0 (unbounded-N DoS): because the loop below must stay exhaustive for the invariant
+ * above — `matched` and `flags` have to reflect every policy that fired, including shadow ones, not
+ * just the first deny — this function CANNOT short-circuit its way out of an unbounded policy list.
+ * The fix lives upstream instead: MAX_POLICIES_PER_ORG (./bounds.ts) caps N at authoring time
+ * (control-plane/routes/policies.ts POST /policies), so the per-request cost here is bounded by
+ * construction rather than by breaking the deny-overrides contract.
  */
 
 import type { AttributeActivation, CompiledCondition, Enforcement } from './condition-evaluator.js';

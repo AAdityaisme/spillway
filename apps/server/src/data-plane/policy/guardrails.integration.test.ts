@@ -76,7 +76,14 @@ beforeAll(async () => {
   await sql`INSERT INTO virtual_keys (id, org_id, name, key_hash, key_prefix, status, metadata)
             VALUES (${randomUUID()}, ${orgId}, 'tagged', ${sha(TAGGED_KEY)}, 'mk-tag', 'active', '{"sandbox":"1"}'::jsonb)`;
   await sql`INSERT INTO model_prices (provider, model, input_usd_per_m, output_usd_per_m, cache_read_usd_per_m, source, synced_at)
-            VALUES ('openai', 'gpt-4o', 2.5, 10, 0.25, 'litellm', now())`;
+            VALUES ('openai', 'gpt-4o', 2.5, 10, 0.25, 'litellm', now()),
+                   ('openai', 'gpt-4o-mini', 0.15, 0.6, 0.05, 'litellm', now())
+            ON CONFLICT (provider, model) DO NOTHING`;
+  // Chain alias for the PASS-2 drift tests: PASS-1 only ever judges the HEAD (gpt-4o-mini), so the
+  // tail is a model no guardrail has looked at. model_aliases survives the per-test TRUNCATE.
+  await sql`INSERT INTO model_aliases (org_id, alias, targets) VALUES (${orgId}, 'pair',
+              '[{"provider":"openai","model":"gpt-4o-mini"},{"provider":"openai","model":"gpt-4o"}]'::jsonb)
+            ON CONFLICT DO NOTHING`;
 });
 afterAll(async () => {
   await h.close();
@@ -176,6 +183,122 @@ describe('CEL attributes + fail-closed logging (red-team B2/B4)', () => {
         h.adminSql`SELECT cel_error FROM decision_logs WHERE org_id = ${orgId} AND effect = 'deny'`,
     );
     expect(rows[0]?.cel_error).toBe(true);
+  });
+});
+
+/**
+ * PASS-2 model drift (red-team P0: "Spillway decides once, then the request drifts"). The
+ * SHADOWING-BYPASS test above covers the case where the DENIED model is the one the client typed.
+ * These cover the inverse, which was open: the client asks for a model no policy denies, and routing
+ * then puts a denied model on the wire — via a rewrite_model rule, or via the chain tail dispatch
+ * walks on a retryable failure. Before the fix every one of these served the denied model.
+ */
+describe('PASS-2 model drift: guardrails re-checked against the model actually served', () => {
+  // These tests assert an upstream call NEVER happens, so they leave their interceptor unconsumed.
+  // Drop it, or the leftover answers the NEXT test's first request and inverts its result.
+  beforeEach(() => {
+    mockAgent.get(OPENAI_ORIGIN).cleanMocks();
+  });
+
+  /** Intercept the next upstream call and record whether it was ever made. */
+  function interceptWatched(): { called: () => boolean } {
+    let called = false;
+    mockAgent
+      .get(OPENAI_ORIGIN)
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(() => {
+        called = true;
+        return {
+          statusCode: 200,
+          data: completion,
+          responseOptions: { headers: { 'content-type': 'application/json' } },
+        };
+      });
+    return { called: () => called };
+  }
+
+  it('a rewrite_model rule landing on a DENIED model is blocked, never dispatched', async () => {
+    await seedPolicy({ effect: 'deny', models: ['gpt-4o'], reason: 'model_blocked' });
+    // The client asks for gpt-4o-mini, which NO policy denies — PASS-1 admits it. The rule then
+    // rewrites the served candidate to gpt-4o, the model that IS denied.
+    await h.adminSql`INSERT INTO routing_rules (org_id, priority, match, action, enabled)
+      VALUES (${orgId}, 10, '{"models":["gpt-4o-mini"]}'::jsonb,
+              '{"type":"rewrite_model","to":{"provider":"openai","model":"gpt-4o"}}'::jsonb, true)`;
+
+    const up = interceptWatched();
+    const res = await post('gpt-4o-mini');
+
+    expect(up.called()).toBe(false); // old behavior: dispatched gpt-4o and billed it
+    expect(res.statusCode).toBe(403);
+    const body = res.json<{ error: { code: string; spillway: { block_reason: string } } }>();
+    expect(body.error.code).toBe('rule_deny');
+    expect(body.error.spillway.block_reason).toBe('rule_deny');
+
+    const blocked = await poll(
+      () =>
+        h.adminSql`SELECT block_reason FROM requests WHERE org_id = ${orgId} AND status = 'blocked'`,
+    );
+    expect(blocked[0]?.block_reason).toBe('rule_deny');
+    const dl = await poll<{ effect: string }>(
+      () =>
+        h.adminSql`SELECT effect FROM decision_logs WHERE org_id = ${orgId} AND effect = 'deny'`,
+    );
+    expect(dl[0]?.effect).toBe('deny'); // logged under its own decision id, not swallowed by dedupe
+  });
+
+  it('a chain advance onto a DENIED model does not dispatch it', async () => {
+    await seedPolicy({ effect: 'deny', models: ['gpt-4o'], reason: 'model_blocked' });
+    // alias 'pair' → [gpt-4o-mini, gpt-4o]. PASS-1's model_resolved is the HEAD, so the deny never
+    // matched; the head then fails retryably and the executor used to walk straight onto gpt-4o.
+    mockAgent
+      .get(OPENAI_ORIGIN)
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(503, { error: { message: 'upstream down' } } as never, {
+        headers: { 'content-type': 'application/json' },
+      });
+    const second = interceptWatched();
+
+    const res = await post('pair');
+
+    expect(second.called()).toBe(false); // old behavior: served the denied tail on the retry
+    expect(res.statusCode).not.toBe(200);
+  });
+
+  it('a rewrite onto an ALLOWED model is untouched (the re-check is not a blanket block)', async () => {
+    await seedPolicy({ effect: 'deny', models: ['gpt-4o'], reason: 'model_blocked' });
+    await h.adminSql`INSERT INTO routing_rules (org_id, priority, match, action, enabled)
+      VALUES (${orgId}, 10, '{"models":["gpt-4o-mini"]}'::jsonb,
+              '{"type":"rewrite_model","to":{"provider":"openai","model":"gpt-4o-mini"}}'::jsonb, true)`;
+    const up = interceptWatched();
+    const res = await post('gpt-4o-mini');
+    expect(res.statusCode).toBe(200);
+    expect(up.called()).toBe(true);
+  });
+
+  it('a model-INDEPENDENT flag still annotates and serves across a rewrite (not re-run, not blocked)', async () => {
+    // Wildcard flag (match {}): its verdict cannot move with the served model, so PASS-2 skips it
+    // entirely — PASS-1 keeps sole ownership of the annotation and its decision-log row.
+    await h.adminSql`INSERT INTO governance_policies (org_id, name, effect, reason, match, enforcement, enabled)
+      VALUES (${orgId}, ${'pf-' + randomUUID().slice(0, 8)}, 'flag', 'watched', '{}'::jsonb, 'enforce', true)`;
+    await h.adminSql`INSERT INTO routing_rules (org_id, priority, match, action, enabled)
+      VALUES (${orgId}, 10, '{"models":["gpt-4o-mini"]}'::jsonb,
+              '{"type":"rewrite_model","to":{"provider":"openai","model":"gpt-4o"}}'::jsonb, true)`;
+    const up = interceptWatched();
+    const res = await post('gpt-4o-mini');
+    expect(res.statusCode).toBe(200);
+    expect(up.called()).toBe(true);
+    expect(res.headers['x-spillway-guardrail-flags']).toBeTruthy();
+  });
+
+  it('a SHADOW deny on the rewritten model still does not block', async () => {
+    await seedPolicy({ effect: 'deny', models: ['gpt-4o'], enforcement: 'shadow' });
+    await h.adminSql`INSERT INTO routing_rules (org_id, priority, match, action, enabled)
+      VALUES (${orgId}, 10, '{"models":["gpt-4o-mini"]}'::jsonb,
+              '{"type":"rewrite_model","to":{"provider":"openai","model":"gpt-4o"}}'::jsonb, true)`;
+    const up = interceptWatched();
+    const res = await post('gpt-4o-mini');
+    expect(res.statusCode).toBe(200); // shadow records, never acts — in PASS-2 as in PASS-1
+    expect(up.called()).toBe(true);
   });
 });
 

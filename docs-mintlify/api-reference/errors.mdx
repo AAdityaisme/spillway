@@ -21,7 +21,7 @@ SDKs parse the shape they already expect.
       "error": {
         "code": "not_found",
         "message": "budget not found",
-        "docs_url": "https://docs.spillway.cloud/errors/not_found"
+        "docs_url": "https://spillway.mintlify.site/api-reference/errors#not_found"
       }
     }
     ```
@@ -61,7 +61,7 @@ SDKs parse the shape they already expect.
           "scope_type": "virtual_key",
           "scope_id": "<key-uuid>",
           "period": "day",
-          "period_key": "2026-08",
+          "period_key": "2026-08-08",
           "spent_usd": "20.00",
           "limit_usd": "20.00"
         }
@@ -69,9 +69,11 @@ SDKs parse the shape they already expect.
     }
     ```
 
-    A guardrail `deny`/`require_approval` block carries `policy_id` and `decision_id` (and
-    `approval_request_id` for `require_approval`) in `error.spillway` instead of the budget
-    fields above.
+    A guardrail `deny` block carries `policy_id` and `decision_id` in `error.spillway`
+    instead of the budget fields above. The schema also defines a `require_approval` variant
+    that would additionally carry `approval_request_id`, but that guardrail effect can't be
+    authored yet — see [Guardrails](/configuration/guardrails) — so it isn't reachable from a
+    live request today.
   </Tab>
 </Tabs>
 
@@ -89,7 +91,12 @@ body:
 
 ## Error codes
 
-<Tip>Every code below is a real, currently-thrown value in the server — not an aspirational list.</Tip>
+<Tip>
+  Every code below is a real value defined in the server's error taxonomy — not an
+  aspirational list. One exception is noted inline: `approval_required` exists in the code
+  but is currently unreachable because its trigger (a guardrail's `require_approval` effect)
+  can't be authored yet.
+</Tip>
 
 ### Auth & keys
 
@@ -109,7 +116,7 @@ body:
 | --- | --- | --- |
 | `budget_exceeded` | 402 | An `enforce`-mode budget would be exceeded. See [Budgets](/configuration/budgets). |
 | `rule_deny` | 403 | A guardrail policy's `deny` effect matched. See [Guardrails](/configuration/guardrails). |
-| `approval_required` | 403 | A guardrail's `require_approval` effect matched; an approval request was opened. |
+| `approval_required` | 403 | Reserved for a guardrail's `require_approval` effect opening an approval request. That effect can't be authored yet (creating such a policy returns `422`), so this code isn't reachable from a live request today — see [Guardrails](/configuration/guardrails). |
 | `rate_limited` | 429 | The key's `rpmLimit`/`tpmLimit` was exceeded. |
 | `model_not_allowed` | 403 | The requested model isn't in the key's `allowedModels`. |
 | `no_route_available` | 503 | Routing found no candidate satisfying a hard constraint (for example, a data-residency requirement). |

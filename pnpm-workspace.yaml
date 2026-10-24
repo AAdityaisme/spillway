@@ -1,3 +1,39 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# Supply-chain hardening (pnpm ≥10, Phase 2 semgrep p/typescript findings 2026-08-08).
+# A malicious release is usually yanked within days — waiting 7 days before installing a
+# newly published version sidesteps the whole compromise window (Dependabot's cooldown
+# below mirrors this so its PRs don't just wait out the same week in CI).
+minimumReleaseAge: 10080 # minutes = 7 days
+trustPolicy: no-downgrade # a dep update cannot silently downgrade security settings
+# Narrow, documented exception. testcontainers@10.28.0 (a devDependency-only test tool,
+# apps/server/package.json:31) pins its own internal `undici` requirement to `^5.29.0`.
+# That dev-graph-only 5.x resolution lost registry provenance attestation relative to an
+# earlier 5.x release, which aborts pnpm's ENTIRE lockfile resolution under no-downgrade —
+# blocking every Dependabot PR, including unrelated production-graph security patches
+# (verified 2026-08-08: reproducing Dependabot's own command failed on ERR_PNPM_TRUST_DOWNGRADE
+# for "undici@5.29.0" at testcontainers -> @testcontainers/postgresql, devDependencies only).
+# pnpm's trustPolicyExclude only accepts exact versions (or an exact-version union via
+# `||`) — NOT semver ranges; `undici@<6.0.0` was tried first and rejected with
+# ERR_PNPM_INVALID_TRUST_POLICY_EXCLUDE ("Use exact versions only"). Pinning the exact
+# version keeps the exception as narrow as pnpm allows: it does NOT cover apps/server's
+# own production `undici` dependency (`^7.29.0`, apps/server/package.json:26), which stays
+# under full trust-policy enforcement — confirmed by mutation (wrong key name and wrong
+# pinned patch version both still fail with ERR_PNPM_TRUST_DOWNGRADE; see the
+# chore/unblock-dependabot-trust-policy commit message for the verification transcript).
+# DELETING this entry is the default action, not renewing it. Once the graph no longer resolves
+# undici to exactly 5.29.0 — testcontainers bumps its `^5.29.0` range, or the dependency goes away —
+# this line matches nothing and should simply be removed. Same if 5.29.0 regains provenance upstream.
+# Do NOT reflexively re-pin the successor version: a later 5.x only needs an exception if it ALSO
+# trips the policy, and pre-emptively exempting one that already passes enforcement weakens the
+# policy while unblocking nothing. Re-add only against a reproduced ERR_PNPM_TRUST_DOWNGRADE.
+trustPolicyExclude:
+  - 'undici@5.29.0'
+blockExoticSubdeps: true # sub-deps must come from the registry — no git/tarball-URL surprises
+# pnpm deploy (Dockerfile prod stage) refuses to run lockfile-locked without this; the
+# --legacy fallback re-resolves every version from the registry at image-build time, shipping
+# code CI never tested. Injected = workspace deps are hard-copied into each consumer's
+# node_modules instead of symlinked.
+injectWorkspacePackages: true

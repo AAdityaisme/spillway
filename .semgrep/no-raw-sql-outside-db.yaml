@@ -1,0 +1,57 @@
+## `sql.raw(...)` (drizzle-orm) interpolates its argument as literal, UNPARAMETERIZED SQL
+## text — no escaping, no binding. It exists only for the one thing drizzle can't
+## parameterize (table/column identifiers), and every interpolated value must therefore be
+## a fixed, code-controlled string, never request/user input. That's a sharp enough edge
+## that it should live next to the schema in db/, where the whole file is already under
+## DB-review scrutiny — not scattered through services/routes where it's easy to miss that
+## one interpolation among the (safe) parameterized ones.
+##
+## Deliberately NOT flagging plain `` sql`...` `` tagged-template usage: verified by reading
+## the imports (all `import { sql } from 'drizzle-orm'`) and the call sites — it's
+## drizzle-orm's standard parameterized query builder (every `${}` interpolation becomes a
+## bound parameter, not string-spliced text), and it's the sanctioned way ~40 files under
+## services/, control-plane/routes/, jobs/, and data-plane/ run queries that don't fit the
+## fluent query builder (aggregations, upserts, RLS `set_config`, advisory locks). Banning
+## it would mean either gutting the codebase's query pattern or excluding essentially every
+## non-db/ file that talks to Postgres — the "exclude everything" failure mode the task
+## explicitly warned against, and it would bury the one construct (`sql.raw`) that's
+## actually worth a human re-reading on every occurrence. Scoping to `sql.raw(` targets the
+## real injection-shaped edge case without diluting the rule's signal.
+
+rules:
+  - id: sql-raw-outside-db
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      sql.raw() used outside apps/server/src/db/. sql.raw() splices its argument into the
+      query as unparameterized SQL text (no escaping) — it exists only for identifiers
+      (table/column names) drizzle can't bind as a parameter, and every interpolated value
+      must be a fixed, code-controlled string. Move this query into db/, or if it must stay
+      here, get it reviewed and add a dated exclusion to
+      .semgrep/no-raw-sql-outside-db.yaml explaining why the interpolated value can't be
+      request/user-influenced.
+    patterns:
+      - pattern: sql.raw(...)
+    paths:
+      include:
+        - '**/apps/server/src'
+      exclude:
+        - '**/apps/server/src/db'
+        - '**/*.test.ts'
+        - '**/apps/server/test'
+        # accepted 2026-08-08: table name is one of a hardcoded literal set passed by each
+        # call site ('request_bodies' | 'requests' | 'decision_logs' | 'routing_config_snapshots')
+        # for the batched retention DELETE — never request-influenced. SNAPSHOT_MIN_AGE is a
+        # module-level string constant, not user input either.
+        - '**/apps/server/src/jobs/retention.ts'
+        # accepted 2026-08-08: table name is a fixed ternary ('teams' | 'virtual_keys') keyed
+        # off an internal scopeType enum, not request input — used to resolve a scope's
+        # display name for the forecast-scan anomaly job.
+        - '**/apps/server/src/services/anomaly/forecast-scan.ts'
+        # accepted 2026-08-08: same fixed 'teams' | 'virtual_keys' ternary as forecast-scan.ts,
+        # used to resolve a budget scope's display name for alert delivery.
+        - '**/apps/server/src/services/alerts/threshold.ts'
+        # accepted 2026-08-08: `col` is a column-name literal passed by each D1-D4 billing
+        # detector call site (e.g. 'r.created_at') inside runBillingDetectors — a fixed set
+        # baked into this file, never request-influenced.
+        - '**/apps/server/src/services/chargeback.ts'

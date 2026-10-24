@@ -1,19 +1,26 @@
 ---
 title: "Guardrails"
-description: "Match-and-effect policies evaluated on every request — deny, flag, or require approval."
+description: "Match-and-effect policies evaluated on every request — deny or flag."
 ---
 
 A guardrail policy (`/api/policies`) matches requests on criteria you define and applies an
 effect. Unlike budgets, guardrails aren't about spend — they're about *which* requests are
 allowed to happen at all.
 
+<Warning>
+  **`require_approval` is not available yet.** Creating a policy with that effect returns
+  `422`. The effect is defined in the schema, but the mechanism that lets an *approved*
+  request through on retry is still pending an ADR — shipping it without that would make
+  `require_approval` a permanent deny wearing the wrong name. Use `deny` or `flag` today.
+</Warning>
+
 ```jsonc
-// POST /api/policies   (session or admin-key auth)
+// POST /api/policies   (session auth)
 {
   "name": "block-gpt-4-for-interns",
   "description": "Interns can't use the expensive tier",
-  "effect": "require_approval",
-  "reason": "gpt-4.1 requires manager approval for the intern team",
+  "effect": "deny",
+  "reason": "gpt-4.1 is not available to the intern team",
   "match": {
     "team_ids": ["<intern-team-uuid>"],
     "models": ["gpt-4.1"]
@@ -29,24 +36,25 @@ allowed to happen at all.
 | --- | --- | --- |
 | `name` | string, required | |
 | `description` | string | |
-| `effect` | `deny` \| `require_approval` \| `flag`, required | What happens when the policy matches. |
+| `effect` | `deny` \| `flag`, required | What happens when the policy matches. `require_approval` is a valid schema value but is rejected with `422` — see the warning above. |
 | `reason` | string, required | Shown to the caller (deny/approval) and logged in the decision log. |
-| `match` | object | `virtual_key_ids`, `team_ids`, `models`, `metadata` — any combination; a request matches if it satisfies the criteria you set. |
+| `match` | object | `virtual_key_ids`, `team_ids`, `models`, `metadata`, `providers`, `endpoints` — any combination; a request matches if it satisfies the criteria you set. |
 | `conditionCel` | string \| null | An additional [CEL](https://github.com/google/cel-spec) expression for conditions `match` can't express. Authoring-time errors (`cel_parse_error`, `cel_type_error`, and related codes) are returned on create/update, not discovered at request time. |
 | `enforcement` | `shadow` \| `enforce`, default `enforce` | `shadow` evaluates and logs the decision without actually applying the effect — the way to test a new policy against live traffic before it can block anything. |
 | `enabled` | boolean, default `true` | |
 | `effectConfig` | object | Effect-specific configuration (for example, which approval policy a `require_approval` effect opens against). |
 
-## The three effects
+## The effects
 
 - **`deny`** — the request is blocked with `403` before dispatch. No provider call, no
   charge.
-- **`require_approval`** — the request is blocked with `403` and an approval request is
-  opened against the effect's approval policy (see
-  [Approvals & automation](/configuration/approvals-and-automation)). The caller has to
-  retry once it's approved; there's no automatic hold-and-resume.
 - **`flag`** — the request proceeds normally. The match is recorded in the decision log for
   visibility, with no effect on the response.
+- **`require_approval`** — *not available yet.* The intent is that the request is blocked
+  with `403`, an approval request opens against the effect's approval policy, and the caller
+  retries once it's granted. What isn't settled is the grant itself: what an approval records
+  so the retry passes. Until an ADR specifies that, authoring the policy returns `422` rather
+  than leaving you with a rule that denies forever and reports "approval required".
 
 ## Testing before you enforce
 
@@ -64,7 +72,7 @@ useful for catching a malformed CEL expression before it ever reaches the databa
 
 <CardGroup cols={2}>
   <Card title="Approvals & automation" icon="check" href="/configuration/approvals-and-automation">
-    What `require_approval` actually opens, and how to build an approval chain.
+    Approval chains for budget increases and key unpauses, and how to build one.
   </Card>
   <Card title="Routing" icon="route" href="/configuration/routing">
     Reroute a model instead of denying the request outright.

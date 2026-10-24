@@ -5,3 +5,10 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# AGENTS.md is instructions for whoever edits these docs, not a page for readers. Note that it
+# is NOT covered by the auto-ignore list above — that list has `.agents` (the directory), and
+# the near-identical name reads as covered when it is not. Left unlisted, Mintlify publishes it:
+# https://spillway.mintlify.site/AGENTS answered 200 (verified 2026-08-16) and served the
+# internal terminology rules, including the note that admin-key auth is not wired up server-side.
+AGENTS.md

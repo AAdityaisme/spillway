@@ -67,10 +67,12 @@ export async function getModelPrice(
     .from(priceOverrides)
     .where(and(eq(priceOverrides.provider, provider), eq(priceOverrides.model, model)))
     .limit(1);
-  if (override[0]) return normalize(override[0] as PriceRowWithJson);
+  // price_overrides has no max_output_tokens column (overrides only ever repoint rates) — an override
+  // hit reports it unknown, same as an unpopulated model_prices row.
+  if (override[0]) return normalize({ ...override[0], maxOutputTokens: null } as PriceRowWithJson);
 
   const price = await db
-    .select(priceCols(modelPrices))
+    .select({ ...priceCols(modelPrices), maxOutputTokens: modelPrices.maxOutputTokens })
     .from(modelPrices)
     .where(and(eq(modelPrices.provider, provider), eq(modelPrices.model, model)))
     .limit(1);

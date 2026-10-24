@@ -111,8 +111,12 @@ export function counterPeriodKeys(
   return [...keys];
 }
 
-/** Is `b` in scope? Provider budgets are always collected (BUDGET filters to the served head
- *  provider, §2.2); `customer` is reserved and never resolved in v1 (§1.9). */
+/** Is `b` in scope? Provider budgets are always collected — and collecting ALL of them, not just the
+ *  chain head's, is now load-bearing rather than merely tidy: BUDGET evaluates per CANDIDATE (§2.2, as
+ *  amended 2026-08-21), so the spend snapshot must already carry the counter rows for every provider
+ *  in the chain or the look-ahead would have to hit the DB mid-dispatch. (This comment previously said
+ *  BUDGET "filters to the served head provider" — that was the rule whose head-equals-served
+ *  assumption chain advance broke.) `customer` is reserved and never resolved in v1 (§1.9). */
 function applies(b: BudgetRow, bundle: BudgetBundle): boolean {
   switch (b.scopeType) {
     case 'virtual_key':

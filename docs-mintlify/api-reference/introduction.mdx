@@ -23,10 +23,17 @@ Spillway has three credential types, scoped to different planes:
 | --- | --- | --- |
 | Virtual key (`mk-live-…`) | Data (`/v1/*`) | `Authorization: Bearer mk-live-…` or `x-api-key: mk-live-…` |
 | Session token | Control (`/api/*`) | Set by the dashboard's WorkOS AuthKit login flow. |
-| Admin key (`mka-…`) | Control (`/api/*`) | `Authorization: Bearer mka-…` **plus** an `X-Spillway-Org` header naming the org to act on. |
+| Admin key (`mk-admin-…`) | Control (`/api/*`) | `Authorization: Bearer mk-admin-…` **plus** an `X-Spillway-Org` header naming the org to act on. |
 
 A virtual key never authenticates the control plane, and a session token or admin key never
 authenticates the data plane — the two credential families don't cross over.
+
+<Warning>
+  Admin-key authentication is **not yet enabled**. Admin keys can be minted, revealed once,
+  listed, and revoked via `/api/admin-keys`, but no request path verifies them yet — a
+  minted key currently grants no access. Use a session token (dashboard login) for
+  control-plane calls until admin-key verification ships.
+</Warning>
 
 ## The two planes, at a glance
 

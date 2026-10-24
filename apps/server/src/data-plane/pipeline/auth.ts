@@ -11,6 +11,7 @@ import {
   type CompiledRule,
 } from '../routing/compile.js';
 import { buildConfigSnapshot, type SnapshotBundle } from '../policy/config-snapshot.js';
+import { policyCacheHit, policyCacheMiss } from '../../observability/metrics.js';
 import type { ConditionEvaluator } from '../policy/condition-evaluator.js';
 import type { CompiledPolicy } from '../policy/guardrail-types.js';
 import type { PipelineContext } from './context.js';
@@ -332,6 +333,9 @@ export async function runAuth(ctx: PipelineContext): Promise<void> {
   const cacheKey = keyHash.toString('hex');
 
   let bundle = policyCache.get(cacheKey);
+  // policy_cache_{hits,misses}_total (§6.3): a miss triggers the DB bundle load below.
+  if (bundle) policyCacheHit();
+  else policyCacheMiss();
   if (!bundle) {
     const epoch = invalidation.epoch; // capture BEFORE the first read (B8 set-after-sweep guard)
     try {

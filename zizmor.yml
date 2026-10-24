@@ -1,0 +1,22 @@
+# zizmor policy. Every entry is a finding someone read and decided about — see the reason on each.
+#
+# Nothing else is suppressed: the other 74 findings from the first run (unpinned-uses,
+# excessive-permissions, artipacked) were FIXED, not ignored — actions are SHA-pinned, every
+# workflow declares least-privilege permissions, and every checkout sets persist-credentials: false.
+
+rules:
+  cache-poisoning:
+    ignore:
+      # Ring 3 migration drill. zizmor flags setup-node in a tag-triggered workflow because the
+      # action CAN restore a dependency cache, and this job holds STAGING_DATABASE_URL.
+      #
+      # The actual risk was real and is already closed: this job's `cache: 'pnpm'` was REMOVED
+      # (2026-08-08) so it now installs cold. What remains is the action's mere presence on a
+      # tag-push trigger, which zizmor rates Low confidence and cannot distinguish from an
+      # enabled cache. Accepted: there is no cache to poison here.
+      - release-gates.yml
+
+# One further acceptance lives inline rather than here: adhoc-packages on the `npm i -g neonctl`
+# step in staging-drills.yml. A bare-filename entry under `rules:` does NOT suppress that audit
+# (verified — the finding survived it), so the decision is recorded as a `# zizmor: ignore[...]`
+# comment on the step itself, with the reasoning next to the code it excuses.

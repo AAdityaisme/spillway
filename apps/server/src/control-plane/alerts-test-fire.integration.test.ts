@@ -1,28 +1,29 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { MockAgent, setGlobalDispatcher, getGlobalDispatcher, type Dispatcher } from 'undici';
+import { MockAgent } from 'undici';
 import { makeTestApp, type TestHarness } from '../../test/helpers/app.js';
 
 /**
  * §5.6 test-fire endpoint. Drives POST /api/alerts/:id/test through the REAL HTTP channel sink over a
- * MockAgent global dispatcher (global fetch honors it), so the whole path — auth/entitlement gate, alert
- * lookup, channel parse, synthetic delivery, per-channel result — is exercised end to end. disableNetConnect
- * makes any unexpected outbound call fail loudly.
+ * MockAgent, so the whole path — auth/entitlement gate, alert lookup, channel parse, synthetic
+ * delivery, per-channel result — is exercised end to end. disableNetConnect makes any unexpected
+ * outbound call fail loudly.
+ *
+ * The mock is INJECTED (makeTestApp({dispatcher})), not installed with setGlobalDispatcher. Alert
+ * delivery now sends through the SSRF-guarded dispatcher, and passing fetch an explicit dispatcher
+ * bypasses the global one entirely — a globally-installed MockAgent would simply never be consulted,
+ * and the request would go to real DNS for a .test hostname that does not resolve.
  */
 describe('POST /api/alerts/:id/test — test-fire (§5.6)', () => {
   let h: TestHarness;
-  let prevDispatcher: Dispatcher;
   let mock: MockAgent;
 
   beforeEach(async () => {
-    h = await makeTestApp();
-    prevDispatcher = getGlobalDispatcher();
     mock = new MockAgent();
     mock.disableNetConnect();
-    setGlobalDispatcher(mock);
+    h = await makeTestApp({ dispatcher: mock });
   });
   afterEach(async () => {
-    setGlobalDispatcher(prevDispatcher);
     await mock.close();
     await h.close();
   });

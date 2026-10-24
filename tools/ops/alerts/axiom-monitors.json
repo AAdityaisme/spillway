@@ -1,0 +1,45 @@
+{
+  "$comment": "Operator alerts 3/4/5/7-backup from the ops spec (12-operations §6.4), as Axiom monitor definitions. Dataset: spillway-prod (created when the Fly log drain is provisioned). Apply with ./apply-axiom.sh — needs AXIOM_TOKEN. notifierIds are patched in by the script from AXIOM_NOTIFIER_SLACK / AXIOM_NOTIFIER_EMAIL env (IDs exist only after notifiers are created in the Axiom UI).",
+  "monitors": [
+    {
+      "name": "spillway-alert3-error-rate-spike",
+      "type": "Threshold",
+      "description": "Alert 3: >10 error-level log lines in 5 minutes. Field is pino `level` (50 = error) — the spec's prose says error-level; pino serializes it as `level`, not `status`.",
+      "aplQuery": "['spillway-prod'] | where level == 50 | summarize count() by bin(_time, 5m)",
+      "intervalMinutes": 5,
+      "rangeMinutes": 5,
+      "threshold": 10,
+      "operator": "Above",
+      "notify": ["slack"]
+    },
+    {
+      "name": "spillway-alert4-job-failure",
+      "type": "MatchEvent",
+      "description": "Alert 4: any background-job failure. Matches the job.error log taxonomy (12-operations §5).",
+      "aplQuery": "['spillway-prod'] | where msg == \"job.error\"",
+      "intervalMinutes": 5,
+      "rangeMinutes": 5,
+      "notify": ["slack"]
+    },
+    {
+      "name": "spillway-alert5-pricing-sync-stale-36h",
+      "type": "Threshold",
+      "description": "Alert 5: no successful pricing-sync finish in 36h. Counts successful finishes in the trailing 36h window — 0 means stale. Daily at the monitor's schedule (~06:00 UTC when created then).",
+      "aplQuery": "['spillway-prod'] | where msg == \"job.finish\" and job == \"pricing-sync\" and ok == true | count",
+      "intervalMinutes": 1440,
+      "rangeMinutes": 2160,
+      "threshold": 1,
+      "operator": "Below",
+      "notify": ["email"]
+    },
+    {
+      "name": "spillway-alert7-spend-write-lost-CRITICAL",
+      "type": "MatchEvent",
+      "description": "Alert 7 (backup channel): money not metered — reconcile declared a settle lost after retries. Primary channel is the prom scrape on spillway_spend_write_lost_total; this log match fires even if scraping is down. `startswith`, not ==, per the spec (msg carries a suffix).",
+      "aplQuery": "['spillway-prod'] | where msg startswith \"spend_write_lost\"",
+      "intervalMinutes": 1,
+      "rangeMinutes": 5,
+      "notify": ["slack", "email"]
+    }
+  ]
+}

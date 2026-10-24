@@ -73,7 +73,7 @@ export function loadRateConfig(): ControlPlaneRateConfig {
   };
 }
 
-function isLoopback(ip: string): boolean {
+export function isLoopback(ip: string): boolean {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 

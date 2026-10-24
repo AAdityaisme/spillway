@@ -245,11 +245,11 @@ export function SettingsPage() {
             </div>
             <div className="mt-4">
               <a
-                href="/#pricing"
+                href="https://github.com/AAdityaisme/spillway/issues"
                 data-testid="settings-billing-view-plans-link"
                 className="focus-ring inline-flex h-8 items-center justify-center rounded-[var(--radius-btn)] bg-[var(--card)] px-3 text-[13px] font-semibold text-[var(--ink)] shadow-[inset_0_0_0_1px_var(--line)] transition-shadow hover:shadow-[inset_0_0_0_1px_rgba(0,102,204,0.45)]"
               >
-                View plans
+                Contact us
               </a>
             </div>
           </Card>

@@ -10,20 +10,58 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: read
+
 concurrency:
   group: release-gates-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # Secrets are NOT readable in a job-level `if:`, so presence has to be turned into a job output
+  # first. Same shape as staging-drills.yml's check-secrets, deliberately — one pattern for
+  # "this gate needs an environment nobody has provisioned yet".
+  #
+  # This exists because the header above claimed rings 3–5 "no-op until the staging secrets are
+  # configured" and they did not: Ring 3 ran `pnpm db:migrate` with an EMPTY MIGRATION_DATABASE_URL
+  # and hard-failed on it, so every release-gates run has been red on a prerequisite nobody had
+  # agreed to meet yet. That is the failure mode the trivy comment further down warns about — a
+  # permanently-red gate teaches people to bypass the whole workflow, including the rings that are
+  # genuinely reporting. Skipping is honest here; failing is not.
+  check-staging-secrets:
+    name: check staging secrets present
+    runs-on: ubuntu-latest
+    outputs:
+      db_ready: ${{ steps.gate.outputs.db_ready }}
+      url_ready: ${{ steps.gate.outputs.url_ready }}
+      fly_ready: ${{ steps.gate.outputs.fly_ready }}
+    steps:
+      - name: Gate rings 3–5 on the secrets each one needs
+        id: gate
+        run: |
+          set -euo pipefail
+          for pair in "db_ready:${STAGING_DATABASE_URL:-}" "url_ready:${STAGING_BASE_URL:-}" "fly_ready:${FLY_API_TOKEN:-}"; do
+            name="${pair%%:*}"; value="${pair#*:}"
+            if [ -n "$value" ]; then echo "$name=true" >> "$GITHUB_OUTPUT"; else echo "$name=false" >> "$GITHUB_OUTPUT"; fi
+          done
+          [ -n "${STAGING_DATABASE_URL:-}" ] || echo "::notice::Ring 3 skipped — STAGING_DATABASE_URL is not set. Staging is not provisioned yet (Half B)."
+          [ -n "${STAGING_BASE_URL:-}" ] || echo "::notice::Ring 4 skipped — STAGING_BASE_URL is not set."
+          [ -n "${FLY_API_TOKEN:-}" ] || echo "::notice::Ring 5 skipped — FLY_API_TOKEN is not set."
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          STAGING_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
   # Ring 1 — build the production image, boot it, verify /healthz answers and the process is non-root.
   image-smoke:
     name: Ring 1 · Docker build + healthz + non-root probe
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: build image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           load: true
@@ -32,20 +70,54 @@ jobs:
         # loadConfig runs before listen(): DATABASE_URL/_JOBS + SPILLWAY_ENC_KEY_V1 are required, but
         # postgres.js is LAZY so /healthz (liveness) answers with NO live DB. JOBS_ENABLED=false keeps
         # the scheduler from querying the (absent) DB. DB URLs are valid-FORMAT placeholders only.
+        #
+        # NODE_ENV=production, NOT development. This probe used to boot the production image in
+        # development mode to dodge the seven vars config requires in prod — and development mode
+        # with no WORKOS_CLIENT_ID is exactly the condition that turns on index.ts's dev auth seam,
+        # which persists a generated keypair to `${cwd}/.dev-auth-key.json`. The runtime image runs
+        # as non-root in a root-owned /app, so that write is EACCES and the server dies before
+        # listen(). A dev-only code path, unreachable in real production, was crashing the
+        # production-image smoke test — and it went unseen because the build step ahead of it was
+        # failing first. Booting in production mode also means this gate now proves the production
+        # env contract is satisfiable, which is the thing worth smoke-testing.
+        #
+        # Every value below is a format-valid placeholder, deliberately unusable: nothing here is
+        # dialed at boot (jose fetches the WorkOS JWKS lazily, on first verify), and the .invalid
+        # TLD is reserved by RFC 2606 so no host can ever resolve.
         run: |
           docker run -d --name spillway_ci -p 3000:3000 \
-            -e PORT=3000 -e NODE_ENV=development -e JOBS_ENABLED=false \
+            -e PORT=3000 -e NODE_ENV=production -e JOBS_ENABLED=false \
             -e DATABASE_URL='postgres://u:p@127.0.0.1:5432/db' \
             -e DATABASE_URL_JOBS='postgres://u:p@127.0.0.1:5432/db' \
             -e SPILLWAY_ENC_KEY_V1='AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' \
+            -e WORKOS_API_KEY='sk_test_ci_placeholder_not_a_real_key' \
+            -e WORKOS_CLIENT_ID='client_ci_placeholder' \
+            -e WORKOS_JWT_AUD='client_ci_placeholder' \
+            -e WORKOS_COOKIE_PASSWORD='ci-placeholder-cookie-password-not-real' \
+            -e SPILLWAY_ACTION_TOKEN_SECRET='0000000000000000000000000000000000000000000000000000000000000000' \
+            -e DASHBOARD_ORIGIN='https://dashboard.ci.invalid' \
+            -e METRICS_TOKEN='ci-placeholder-metrics-token' \
+            -e PUBLIC_URL='https://ci.invalid' \
             spillway:ci
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl -fsS http://localhost:3000/healthz; then ok=1; break; fi
             sleep 1
           done
           test "${ok:-0}" = 1 || { docker logs spillway_ci; exit 1; }
       - name: assert non-root
         run: test "$(docker exec spillway_ci id -u)" != "0"
+      # The image copies apps/landing through an explicit per-file allowlist, so a new asset that
+      # nobody added to the Dockerfile 404s in production while working perfectly in dev. Probe the
+      # real assets, and assert the nonce CSP survived the build — a document served without one
+      # fails OPEN (page renders, script-src silently absent), which no smoke test would notice.
+      - name: probe landing page + CSP nonce
+        run: |
+          curl -fsS -D /tmp/h -o /tmp/landing.html http://localhost:3000/
+          grep -qi 'content-security-policy:.*nonce-' /tmp/h
+          grep -q '<script nonce="' /tmp/landing.html
+          for asset in spillway-home.css gr-scene.js vendor/three.module.min.js og.png; do
+            curl -fsS -o /dev/null "http://localhost:3000/$asset" || { echo "MISSING: $asset — add it to the Dockerfile allowlist"; exit 1; }
+          done
 
   # Ring 2 — CycloneDX SBOM (syft) + vulnerability scan (trivy), blocking on CRITICAL/HIGH.
   sbom-scan:
@@ -53,17 +125,18 @@ jobs:
     runs-on: ubuntu-latest
     needs: [image-smoke]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with: { context: ., load: true, tags: 'spillway:ci' }
       - name: SBOM (CycloneDX)
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           image: spillway:ci
           format: cyclonedx-json
           output-file: sbom.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom-${{ github.sha }}
           path: sbom.cdx.json
@@ -74,6 +147,14 @@ jobs:
         # (first commit 2026-06-22, three months after the window closed, and this workflow has
         # never run), but a tag can be moved again. ed142fd == v0.36.0. Bump deliberately.
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        # Fail only on FIXABLE findings. The debian bookworm-slim base carries ~19 CRITICAL/HIGH OS
+        # CVEs that Debian marks will_not_fix/fix_deferred (perl, zlib, util-linux…) on the current
+        # node:22-slim; gating on those makes this ring permanently red on findings nobody can act
+        # on, which is how a gate gets routinely bypassed. Set via env, NOT the `ignore-unfixed`
+        # input: this action revision silently drops unknown inputs, so the input form looks applied
+        # and isn't. Trivy itself always honors the env var.
+        env:
+          TRIVY_IGNORE_UNFIXED: 'true'
         with:
           image-ref: spillway:ci
           severity: 'CRITICAL,HIGH'
@@ -83,15 +164,21 @@ jobs:
   migration-drill:
     name: Ring 3 · staging migration drill
     runs-on: ubuntu-latest
-    needs: [sbom-scan]
-    # Runs on dispatch/tag; requires the STAGING_DATABASE_URL secret to be configured.
+    needs: [sbom-scan, check-staging-secrets]
+    # Skips (not fails) until STAGING_DATABASE_URL exists. Rings 4 and 5 need this job, so a skip
+    # here cascades to them on its own — no `always()` needed.
+    if: ${{ needs.check-staging-secrets.outputs.db_ready == 'true' }}
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: '22', cache: 'pnpm' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        # No pnpm cache here (zizmor cache-poisoning): this job holds STAGING_DATABASE_URL and
+        # runs migrations — a poisoned cache restored on a tag push would execute with those
+        # creds. Cold install costs ~60s on a job that runs only on dispatch/tag.
+        with: { node-version: '22' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
       - name: forward-migrate the staging DB (idempotent — no-op when current)
@@ -103,26 +190,42 @@ jobs:
   slo-load:
     name: Ring 4 · k6 SLO gate (staging)
     runs-on: ubuntu-latest
-    needs: [migration-drill]
-    # Requires STAGING_BASE_URL to point at the staging app.
+    needs: [migration-drill, check-staging-secrets]
+    # Requires STAGING_BASE_URL to point at the staging app; skips until it does.
+    if: ${{ needs.check-staging-secrets.outputs.url_ready == 'true' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: grafana/setup-k6-action@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: grafana/setup-k6-action@db07bd9765aac508ef18982e52ab937fe633a065 # v1
       - name: k6 SLO run against staging
         env:
           BASE_URL: ${{ secrets.STAGING_BASE_URL }}
         run: k6 run --quiet ops/k6/slo.js
+      # k6 measures the EDGE (http_req_duration). This reads the settle-tx histogram out of
+      # staging's own /metrics, so a reconcile that quietly blew 17 §4.6 behind a fast /healthz
+      # can't pass. SKIPs while the histogram is empty (no data-plane traffic yet); add
+      # --require-samples once the pilot cohort is live so an idle histogram can't masquerade
+      # as a pass.
+      - name: reconcile-SLO check (settle-tx p50<=5ms / p99<=15ms)
+        env:
+          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          METRICS_TOKEN: ${{ secrets.STAGING_METRICS_TOKEN }}
+        run: node tools/load/reconcile-slo-check.mjs --url "$BASE_URL/metrics"
 
   # Ring 5 — bluegreen deploy + rollback runbook (Fly). Gated on a green Ring 1–4.
   bluegreen-deploy:
     name: Ring 5 · Fly bluegreen deploy
     runs-on: ubuntu-latest
-    needs: [slo-load]
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }} # tag-only; needs FLY_API_TOKEN configured
+    needs: [slo-load, check-staging-secrets]
+    # tag-only AND token-present. Without the second half this job ran on a tag with an empty
+    # FLY_API_TOKEN and failed inside flyctl, which reads as a broken deploy rather than an
+    # unconfigured one.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.check-staging-secrets.outputs.fly_ready == 'true' }}
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       # Same SHA pin as deploy.yml, and for the same reason: this job has FLY_API_TOKEN in
       # env, so a compromised master would run with a live deploy token in scope.
       # ed8efb3 == tag 1.6. Bump deliberately.

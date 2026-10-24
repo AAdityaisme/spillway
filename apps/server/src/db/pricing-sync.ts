@@ -3,6 +3,7 @@ import { parseLitellmPrices, loadVendoredSnapshot, capabilitiesFor } from '@spil
 import { makeDb } from './client.js';
 import type { DatabaseClient } from './client.js';
 import { modelPrices } from './schema.js';
+import type { Tx } from './tenancy.js';
 
 /**
  * part-3/04 reproducibility ledger: record an immutable snapshot of the ENTIRE live model_prices table
@@ -11,7 +12,7 @@ import { modelPrices } from './schema.js';
  * the live rate set. Returns the new version id. Exported for the sync + tests.
  */
 export async function writeCatalogVersion(
-  db: DatabaseClient,
+  db: DatabaseClient | Tx,
   meta: { sourceName: string; sourceUrl?: string; sourceCommitSha?: string; syncedAt: Date },
 ): Promise<string> {
   const iso = meta.syncedAt.toISOString();
@@ -37,24 +38,24 @@ export async function writeCatalogVersion(
 }
 
 /**
- * pricing-sync job (ADR-010): vendored LiteLLM snapshot → model_prices upsert,
- * then price_overrides are re-applied (none yet at Phase A). Run manually:
- * `pnpm pricing:sync`. Connects as the migration superuser locally; in prod this
- * runs as spillway_jobs (which holds INSERT/UPDATE on the global price tables).
+ * pricing-sync (ADR-010): vendored LiteLLM snapshot → model_prices upsert, then a fresh
+ * price-catalog version + snapshot (part-3/04) frozen in the SAME transaction. Both writes
+ * must be atomic: reconcile stamps every request with the LATEST catalog version, so an
+ * upsert that landed without a matching snapshot would silently re-price old requests
+ * against rates their stamped version never contained. Two entry points:
+ *  - the daily leased scheduler job (jobs/scheduler.ts runPricingSyncJob) running as
+ *    spillway_jobs, which holds INSERT/UPDATE on the global price tables;
+ *  - `pnpm pricing:sync` (the CLI guard below) as the operator's manual run, connecting
+ *    as the migration superuser locally.
  */
-async function main(): Promise<void> {
-  const url =
-    process.env.MIGRATION_DATABASE_URL ??
-    'postgres://spillway:spillway@localhost:5432/spillway_dev';
-  const { db, close } = makeDb(url, 4);
-
+export async function runPricingSync(tx: Tx): Promise<{ synced: number; versionId: string }> {
   const parsed = parseLitellmPrices(loadVendoredSnapshot());
   // (provider/model) prefix-stripping can collide (e.g. 'gemini/x' + 'x') — dedupe, last wins,
   // so a single batch upsert never hits the same conflict row twice.
   const rows = [...new Map(parsed.map((r) => [`${r.provider}:${r.model}`, r])).values()];
   const syncedAt = new Date();
 
-  await db
+  await tx
     .insert(modelPrices)
     // §5.1 capability catalog: stamp each row's advertised capabilities from the static family map
     // (capabilitiesFor → null for unknown families, leaving the column NULL / out of the catalog).
@@ -80,8 +81,18 @@ async function main(): Promise<void> {
     });
 
   // part-3/04: freeze this sync run as an immutable, reproducible catalog version + snapshot.
-  const versionId = await writeCatalogVersion(db, { sourceName: 'litellm_vendored', syncedAt });
-  console.log(`pricing-sync: upserted ${rows.length} model prices (catalog version ${versionId})`);
+  const versionId = await writeCatalogVersion(tx, { sourceName: 'litellm_vendored', syncedAt });
+  return { synced: rows.length, versionId };
+}
+
+/** `pnpm pricing:sync` — the operator's manual run. Connects as the migration superuser locally. */
+async function main(): Promise<void> {
+  const url =
+    process.env.MIGRATION_DATABASE_URL ??
+    'postgres://spillway:spillway@localhost:5432/spillway_dev';
+  const { db, close } = makeDb(url, 4);
+  const { synced, versionId } = await db.transaction((tx) => runPricingSync(tx));
+  console.log(`pricing-sync: upserted ${synced} model prices (catalog version ${versionId})`);
   await close();
 }
 

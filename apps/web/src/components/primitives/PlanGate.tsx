@@ -40,10 +40,10 @@ export function PlanGate({ feature, label, children }: PlanGateProps) {
             Upgrade to the Governance plan to unlock {label.toLowerCase()} for this org.
           </p>
           <a
-            href="/#pricing"
+            href="https://github.com/AAdityaisme/spillway/issues"
             className="focus-ring mt-4 inline-flex h-10 items-center justify-center rounded-[var(--radius-btn)] bg-[var(--blue)] px-4 text-sm font-semibold text-white transition-colors hover:bg-[var(--blue-hover)]"
           >
-            View plans
+            Contact us
           </a>
         </Card>
       </div>

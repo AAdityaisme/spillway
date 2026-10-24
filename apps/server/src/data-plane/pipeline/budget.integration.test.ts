@@ -274,6 +274,73 @@ describe('BUDGET stage (17 §2, B2.4)', () => {
     expect(cap.body()?.model).toBe('gpt-4.1');
   });
 
+  // ── red-team B5: `n` is a spend multiplier ────────────────────────────────────────────────────
+  // `n` sits in the OpenAI/Gemini passthrough sets, so the upstream bills n × output tokens for one
+  // prompt. VALIDATE's n-aware clamp is gated on the key's max_output_tokens, which DEFAULTS TO NULL
+  // (`virtual_keys.max_output_tokens` has no default; `max_parallel` defaults to 32) — so on a
+  // default-provisioned key nothing bounded n and the hold ignored it entirely. This vk is exactly
+  // that key: it was inserted with no rpm/tpm/max_input_tokens/max_output_tokens.
+  it('B5: the hold scales with `n` — one n=32 request cannot walk through a hard cap', async () => {
+    await h.adminSql`INSERT INTO budgets (org_id, scope_type, scope_id, period, limit_usd, mode, on_exceed)
+      VALUES (${orgId}, 'org', ${orgId}, 'day', 0.10, 'enforce', 'block')`;
+    // No intercept registered: a dispatch would throw on the mock agent's disabled net connect, so a
+    // clean 402 also proves nothing reached the provider.
+    const res = await post({ n: 32 });
+    expect(res.statusCode).toBe(402);
+    expect(res.json<{ error: { code: string } }>().error.code).toBe('budget_exceeded');
+
+    // Pre-fix this reached the upstream (502 here, since no intercept is registered); with a provider
+    // answering, the same request settled the counter at $1.048596 — 10.5× the cap off ONE request
+    // (32 × 4096 output tokens @ $8/M). Nothing may be billed on the blocked path.
+    const ctr = await h.adminSql<{ spent_usd: string; reserved_usd: string }[]>`
+      SELECT spent_usd, reserved_usd FROM spend_counters
+       WHERE org_id = ${orgId} AND scope_type = 'org' AND period_key = ${today}`;
+    expect(Number(ctr[0]?.spent_usd ?? 0)).toBe(0);
+    expect(Number(ctr[0]?.reserved_usd ?? 0)).toBe(0); // hold released on the block path
+  });
+
+  it('B5 positive control: the SAME request at n=1 is served under the same cap', async () => {
+    // Isolates `n` as the cause of the 402 above — the $0.10 cap comfortably fits one completion's
+    // ~$0.0328 hold. Without this, a cap-too-tight bug would pass the test above for the wrong reason.
+    await h.adminSql`INSERT INTO budgets (org_id, scope_type, scope_id, period, limit_usd, mode, on_exceed)
+      VALUES (${orgId}, 'org', ${orgId}, 'day', 0.10, 'enforce', 'block')`;
+    const cap = interceptCapture();
+    const res = await post({ n: 1 });
+    expect(res.statusCode).toBe(200);
+    expect(cap.body()?.n).toBe(1); // and `n` really is forwarded verbatim — the multiplier is real
+  });
+
+  it('B5: the in-flight hold is exactly n × the per-completion output term', async () => {
+    // Pins the arithmetic, not just the outcome. Default key ⇒ no max_tokens clamp ⇒ the reservation's
+    // 4096-token fallback applies PER COMPLETION: 32 × 4096 × $8/M + 1 estimated input token × $2/M
+    // = $1.048578. Pre-fix this row read $0.032770 for both n=1 and n=32.
+    await h.adminSql`INSERT INTO budgets (org_id, scope_type, scope_id, period, limit_usd, mode, on_exceed)
+      VALUES (${orgId}, 'org', ${orgId}, 'day', 1000, 'enforce', 'block')`;
+    let dispatched: (() => void) | undefined;
+    const inFlight = new Promise<void>((r) => (dispatched = r));
+    mockAgent
+      .get(OPENAI_ORIGIN)
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(() => {
+        dispatched!();
+        return {
+          statusCode: 200,
+          data: completion,
+          responseOptions: { headers: { 'content-type': 'application/json' } },
+        };
+      })
+      // Hold the upstream open so the hold is observable between reserve and reconcile-release.
+      .delay(500);
+
+    const pending = post({ n: 32 });
+    await inFlight;
+    const [ctr] = await h.adminSql<{ reserved_usd: string }[]>`
+      SELECT reserved_usd FROM spend_counters
+       WHERE org_id = ${orgId} AND scope_type = 'org' AND period_key = ${today}`;
+    expect(ctr!.reserved_usd).toBe('1.048578');
+    expect((await pending).statusCode).toBe(200);
+  });
+
   it('atomic reservation: two concurrent requests cannot both pass a hard cap (H2)', async () => {
     // limit 0.05 fits ONE request's ~0.033 estimate but not two. Pre-reservation both would read
     // spent=0 and pass; with the hold, whichever reserves second sees spent+reserved >= limit → 402.

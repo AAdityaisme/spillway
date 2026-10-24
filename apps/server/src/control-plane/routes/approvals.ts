@@ -155,12 +155,12 @@ export const approvalsRoutes: FastifyPluginAsync<ApprovalsDeps> = async (fastify
       const req = (await tx.execute(sql`
         select id, kind, status, scope_type, scope_id, amount_usd, current_step_index, requested_by,
                decided_by, decided_at, expires_at, created_at
-          from approval_requests where id = ${id}`)) as unknown as unknown[];
+          from approval_requests where id = ${id} and org_id = ${orgId}`)) as unknown as unknown[];
       if (req.length === 0)
         throw new SpillwayError('not_found', 'approval not found', { httpStatus: 404 });
       const steps = await tx.execute(sql`
         select step_index, quorum, required_approver_ids, notify_only, status
-          from approval_steps where approval_id = ${id} order by step_index`);
+          from approval_steps where approval_id = ${id} and org_id = ${orgId} order by step_index`);
       return { approval: req[0], steps };
     });
   });

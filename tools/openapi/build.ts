@@ -67,7 +67,10 @@ registry.registerComponent('securitySchemes', 'sessionToken', {
 registry.registerComponent('securitySchemes', 'adminKey', {
   type: 'http',
   scheme: 'bearer',
-  description: 'Admin API key `mka-…` for machine control-plane access. Requires `X-Spillway-Org`.',
+  // Prefix must match auth/keys.ts generate('mk-admin-') — this string was `mka-…` for a month
+  // while the generator never emitted that shape (caught in the 2026-08-08 docs audit).
+  description:
+    'Admin API key `mk-admin-…` for machine control-plane access. Requires `X-Spillway-Org`.',
 });
 
 // X-Spillway-Org selects the active org for control-plane calls (mandatory for admin keys and for
@@ -79,6 +82,60 @@ const orgHeaders = z.object({
     .uuid()
     .optional()
     .openapi({ example: '601c5d19-0b88-42f7-acda-d1d31abd100d' }),
+});
+
+// Per-request "safe knobs" on the data plane (15 §5, 20 §6, 04 §1.6) — implemented in
+// data-plane/pipeline/validate.ts and reconcile.ts but absent from the spec until the
+// 2026-08-08 docs audit (real, tested functionality that was undiscoverable from the docs).
+// Header wins over the body equivalent; every knob can only constrain, never widen.
+const gatewayKnobHeaders = z.object({
+  'x-spillway-session-id': z
+    .string()
+    .max(256)
+    .optional()
+    .openapi({
+      description:
+        'Pin this request to a routing session (sticky provider/model across a conversation). ' +
+        'Header wins over body `session_id`.',
+      example: 'chat-7f3a2b',
+    }),
+  'x-spillway-require-capabilities': z
+    .string()
+    .optional()
+    .openapi({
+      description:
+        'Comma-separated capability hard-filter (e.g. `vision,tool_use`) — candidates lacking any ' +
+        'listed capability are excluded. Header wins over body `spillway.require_capabilities`. ' +
+        'Unknown capability → 422.',
+      example: 'vision,tool_use',
+    }),
+  'x-spillway-provider': z
+    .string()
+    .optional()
+    .openapi({
+      description:
+        'Disambiguate a model name served by multiple providers. Must be a known provider AND on ' +
+        "the key's allow-list (403 `model_not_allowed` otherwise).",
+      example: 'anthropic',
+    }),
+  'x-spillway-trace': z
+    .string()
+    .optional()
+    .openapi({
+      description:
+        'Opt into per-request tracing: `on` / `1` / `true` (case-insensitive). The response then ' +
+        'carries `x-spillway-trace-id`.',
+      example: 'on',
+    }),
+  'x-spillway-tags': z
+    .string()
+    .optional()
+    .openapi({
+      description:
+        'JSON object of request tags merged into the request `metadata` for reporting (body ' +
+        '`metadata` wins on collision). Bounded: ≤16 keys total, key ≤64 chars, value ≤256 chars.',
+      example: '{"team":"platform","feature":"chat"}',
+    }),
 });
 
 // ── error envelope (§1.4) ────────────────────────────────────────────────────
@@ -184,6 +241,7 @@ interface Op {
   path: string;
   tag: string;
   summary: string;
+  description?: string; // rendered under the summary on the generated reference page
   plane: Plane;
   body?: z.ZodTypeAny;
   bodyName?: string;
@@ -400,12 +458,18 @@ const ops: Op[] = [
   },
 
   // ── admin api keys ──
+  // Mirrors ADMIN_KEY_NONFUNCTIONAL_WARNING in control-plane/routes/admin-api-keys.ts —
+  // delete this description when the admin-key verify path ships.
   {
     method: 'get',
     path: '/api/admin-api-keys',
     tag: 'Admin keys',
     plane: 'session',
     summary: 'List admin API keys.',
+    description:
+      '⚠️ **Admin-key authentication is not yet enabled.** Keys can be minted, listed, and ' +
+      'revoked, but no request path accepts them as a credential yet — a minted key grants ' +
+      'nothing until the verify path ships.',
     list: 'AdminKeyList',
   },
   {
@@ -414,6 +478,10 @@ const ops: Op[] = [
     tag: 'Admin keys',
     plane: 'session',
     summary: 'Mint an admin API key (plaintext returned ONCE).',
+    description:
+      '⚠️ **Admin-key authentication is not yet enabled.** The key is minted and revealed once, ' +
+      'and the response carries a `warning` field saying so — it does not grant access until the ' +
+      'verify path ships. Do not build automation against admin keys yet.',
     body: createAdminKeySchema,
     bodyName: 'CreateAdminKey',
     success: 201,
@@ -890,7 +958,12 @@ function responsesFor(op: Op): RouteConfig['responses'] {
 
 function security(plane: Plane): RouteConfig['security'] {
   if (plane === 'data') return [{ virtualKey: [] }];
-  return [{ sessionToken: [] }, { adminKey: [] }];
+  // `adminKey` is deliberately NOT listed. The scheme stays registered as a documented reservation,
+  // but no request-auth path verifies admin keys yet (admin-api-keys.ts: minted, hashed, revealed
+  // once and revoked — never checked). Listing it made the machine-readable contract advertise a
+  // credential that grants nothing, so a generated SDK would emit admin-key auth that silently
+  // 401s. Prose warnings do not reach codegen. Re-add the moment the verify path ships.
+  return [{ sessionToken: [] }];
 }
 
 for (const op of ops) {
@@ -905,12 +978,15 @@ for (const op of ops) {
     );
   }
   if (op.plane !== 'data') request.headers = orgHeaders;
+  // Safe-knob request headers apply to the POST gateway endpoints, not to catalogue reads.
+  if (op.plane === 'data' && op.method === 'post') request.headers = gatewayKnobHeaders;
 
   registry.registerPath({
     method: op.method,
     path: op.path,
     tags: [op.tag],
     summary: op.summary,
+    ...(op.description ? { description: op.description } : {}),
     security: security(op.plane),
     ...(Object.keys(request).length ? { request } : {}),
     responses: responsesFor(op),
@@ -929,7 +1005,7 @@ const doc = generator.generateDocument({
       '`@spillway/shared` — the single source of truth.',
   },
   servers: [
-    { url: 'https://api.spillway.dev', description: 'Production' },
+    { url: 'https://api.spillway.cloud', description: 'Production' },
     { url: 'http://localhost:3000', description: 'Local dev' },
   ],
 });

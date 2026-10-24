@@ -18,6 +18,10 @@ import {
   openaiResponseToAnthropic,
   providerWireShape,
 } from './providers/translate.js';
+import { recordFallback, recordProviderError } from '../observability/metrics.js';
+import { denyPostRoute } from './pipeline/guardrail-stage.js';
+import { runCandidateBudget, candidateBudgetViable } from './pipeline/budget.js';
+import type { CandidateDenial } from './policy/model-guardrails.js';
 import type { PipelineContext } from './pipeline/context.js';
 
 /**
@@ -197,6 +201,10 @@ async function attemptCandidate(
 
   const errBody = await upstream.json().catch(() => null);
   const mapped = adapter.mapError(upstream.status, errBody);
+  // provider_errors_total (§6.3): a real upstream non-2xx we mapped. provider is the CANDIDATE's
+  // (post-route catalog) provider — never a client alias; http_status is the bounded upstream int.
+  // The prepare-fault path above is intentionally NOT counted (no upstream response was received).
+  recordProviderError(candidate.provider, upstream.status, mapped.spillwayCode);
   // Honor an upstream Retry-After for the circuit-breaker cooldown (§6.3, red-team B5-5): the adapter
   // can't see response headers, so thread the parsed value here when it didn't set one.
   if (mapped.retryAfterMs == null) {
@@ -204,6 +212,88 @@ async function attemptCandidate(
     if (ra != null) mapped.retryAfterMs = ra;
   }
   return { kind: 'error', mapped };
+}
+
+/**
+ * PASS-2 guardrail backstop (red-team P0). ROUTE already screened the resolved chain and the typed
+ * variants, so for a normal request this never fires — the verdict is memoized, so it costs a Map
+ * lookup. It exists because the chain can be REPLACED after ROUTE: BUDGET's on_exceed path
+ * substitutes a whole different alias chain (resolveFallbackAlias explicitly does not re-run
+ * guardrails), and any future chain rewrite lands here too.
+ *
+ * Gates the NEXT attempt BEFORE it is dispatched — a denied model must never reach an upstream, let
+ * alone be billed. Skip-not-fail: a denied candidate is not dispatchable, so the executor walks past
+ * it. Returns the denial (not just a boolean) so the caller can surface it via denyPostRoute if the
+ * chain turns out to be exhausted with nothing ever dispatched (see the exhaustion branch in
+ * runNonStreamChain / runStreamChain) — a pure policy denial must 403, not 502.
+ *
+ * Streaming needs no special case for the SKIP itself: runStreamChain can only advance PRE-commit (it
+ * rethrows once ctx.hijacked / firstByte is set), so skipping a candidate never has to un-send
+ * committed bytes.
+ */
+function denyChainAdvance(ctx: PipelineContext, candidate: Candidate): CandidateDenial | null {
+  const denial = ctx.candidateGuardrail.check(candidate);
+  if (denial === null) return null;
+  ctx.req.log.warn(
+    {
+      requestId: ctx.requestId,
+      candidate: candidateKeyOf(candidate),
+      policyId: denial.policyId,
+      effect: denial.effect,
+      event: 'candidate_guardrail_denied',
+    },
+    'candidate blocked by a model-scoped guardrail — skipped, never dispatched',
+  );
+  return denial;
+}
+
+/**
+ * True if `candidates` still holds a genuine fallback target — one that is neither already attempted,
+ * NOR guardrail-denied, NOR over its own budget. Both chain loops use this to decide `isFinalAttempt`
+ * for the CURRENT attempt (red-team follow-up to the PASS-2 backstop above): a candidate the walk will
+ * SKIP is not a viable fallback, so it must not count toward "is there another candidate to try."
+ * Counting it anyway makes the current failing attempt reconcile non-final — no `requests` row
+ * (reconcile.ts only writes one on `isFinalAttempt`) — and then the chain advances into the skip,
+ * exhausts, and throws 502 with billed spend sitting in `request_attempts` but invisible to anything
+ * that reads `requests`.
+ *
+ * Both probes are cheap and side-effect-free: `check` is memoized per provider:model
+ * (buildCandidateGuardrail), and candidateBudgetViable is a pure compare over the ROUTE-hoisted spend
+ * snapshot and PRICING's price map. The budget probe is the look-ahead twin of the reservation
+ * runCandidateBudget will actually perform (see its doc for the one-sided error it can make).
+ */
+function hasDispatchableCandidate(
+  ctx: PipelineContext,
+  candidates: readonly Candidate[],
+  attempted: ReadonlySet<string>,
+): boolean {
+  return candidates.some(
+    (c) =>
+      !attempted.has(candidateKeyOf(c)) &&
+      ctx.candidateGuardrail.check(c) === null &&
+      candidateBudgetViable(ctx, c),
+  );
+}
+
+/**
+ * Reserve this candidate's budget hold immediately before dispatching it, and report whether it may be
+ * dispatched at all (17 §2.2). Skip-not-fail, exactly like denyChainAdvance: a candidate over a cap is
+ * walked past, never turned into a mid-chain 402 that would discard an already-billed attempt. See
+ * runCandidateBudget for the reserve-before-release ordering that keeps the hold continuous.
+ */
+async function budgetChainAdvance(ctx: PipelineContext, candidate: Candidate): Promise<boolean> {
+  const ok = await runCandidateBudget(ctx, candidate);
+  if (!ok) {
+    ctx.req.log.warn(
+      {
+        requestId: ctx.requestId,
+        candidate: candidateKeyOf(candidate),
+        event: 'candidate_budget_exceeded',
+      },
+      'candidate is over an enforce budget for its own provider — skipped, never dispatched',
+    );
+  }
+  return ok;
 }
 
 export async function runDispatch(ctx: PipelineContext): Promise<void> {
@@ -230,20 +320,48 @@ async function runStreamChain(ctx: PipelineContext): Promise<void> {
     ...(ctx.fallbackFrom as Array<Record<string, unknown>>),
   ];
   let attemptNumber = 0;
+  // Exhaustion-time policy-denial upgrade (red-team finding, budget on_exceed replacement chain): see
+  // the matching comment in runNonStreamChain for the full rationale. Reachability note specific to
+  // streaming: the top-of-loop exhaustion check below can ONLY be reached pre-commit — the try block
+  // `return`s immediately on any commit (success, or a committed-then-in-band error runSseTee already
+  // handled internally), so the loop never continues past a commit. A 403 is therefore always
+  // expressible here; there is no post-commit case to reason about.
+  let anyDispatched = false;
+  let firstDenial: CandidateDenial | null = null;
 
   for (let idx = 0; ; ) {
     while (idx < list.length && attempted.has(candidateKeyOf(list[idx]!))) idx++;
     if (idx >= list.length) {
+      if (!anyDispatched && firstDenial !== null) {
+        await denyPostRoute(ctx, firstDenial, ctx.candidateGuardrail, new Date());
+      }
       throw new SpillwayError('all_providers_failed', 'all candidates failed', { httpStatus: 502 });
     }
     const candidate = list[idx]!;
+    const denial = denyChainAdvance(ctx, candidate);
+    if (denial) {
+      attempted.add(candidateKeyOf(candidate));
+      if (firstDenial === null) firstDenial = denial;
+      idx++;
+      continue;
+    }
+    // Budget gate + hold for THIS candidate, after the guardrail gate (a denied candidate must never
+    // take a hold) and before anything is sent. Over its cap → skip, same as a denial; an exhausted
+    // chain surfaces as all_providers_failed, never a mid-chain 402.
+    if (!(await budgetChainAdvance(ctx, candidate))) {
+      attempted.add(candidateKeyOf(candidate));
+      idx++;
+      continue;
+    }
     attempted.add(candidateKeyOf(candidate));
-    const hasNext = list.slice(idx + 1).some((c) => !attempted.has(candidateKeyOf(c)));
+    anyDispatched = true;
+    const hasNext = hasDispatchableCandidate(ctx, list.slice(idx + 1), attempted);
     ctx.candidate = candidate;
     ctx.activeCandidate = candidate;
     ctx.attemptNumber = attemptNumber;
     ctx.fallbackFrom = fallbackFrom;
-    // Tentatively final only when it's the last candidate; runSseTee flips this to true on commit.
+    // Tentatively final only when no REMAINING candidate is both unattempted and guardrail-dispatchable
+    // (hasDispatchableCandidate); runSseTee flips this to true on commit regardless.
     ctx.isFinalAttempt = !hasNext;
 
     try {
@@ -303,19 +421,54 @@ async function runNonStreamChain(ctx: PipelineContext): Promise<void> {
     ...(ctx.fallbackFrom as Array<Record<string, unknown>>),
   ];
   const log = (e: unknown, m: string): void => ctx.req.log.error({ e }, m);
+  // Exhaustion-time policy-denial upgrade (red-team finding). denyChainAdvance is deliberately
+  // skip-not-fail for a MID-chain denial, because by then a prior candidate has already been
+  // dispatched, billed and reconciled — a 403 there would file a blocked `requests` row that discards
+  // that work. That rationale assumes something already ran. It does NOT hold for a chain that is
+  // entered with nothing yet dispatched (the exact shape BUDGET's on_exceed fallback produces: the
+  // whole candidateChain is swapped for a fallback alias AFTER route, and resolveFallbackAlias/
+  // serveUnderFallback re-runs neither guardrails nor budget). If EVERY candidate in such a chain is
+  // denied, this is a pure policy denial that never touched an upstream — surface it as denyPostRoute
+  // would (terminal 403, decision-log + blocked row), not the misleading 502 all_providers_failed.
+  // Track whether any candidate was actually handed to attemptCandidate this chain-run, and the FIRST
+  // denial seen, so the exhaustion branch below can tell the two shapes apart.
+  let anyDispatched = false;
+  let firstDenial: CandidateDenial | null = null;
 
   for (;;) {
     while (idx < list.length && attempted.has(candidateKeyOf(list[idx]!))) idx++;
     if (idx >= list.length) {
+      // Nothing was ever dispatched AND at least one candidate was skipped for policy reasons → the
+      // whole exhausted chain is a denial, not a provider outage. denyPostRoute always throws (403);
+      // if anyDispatched is true, fall through to the normal 502 — billed work is behind it.
+      if (!anyDispatched && firstDenial !== null) {
+        await denyPostRoute(ctx, firstDenial, ctx.candidateGuardrail, new Date());
+      }
       throw new SpillwayError('all_providers_failed', 'all candidates failed', { httpStatus: 502 });
     }
     const candidate = list[idx]!;
     const key = candidateKeyOf(candidate);
+    const denial = denyChainAdvance(ctx, candidate);
+    if (denial) {
+      attempted.add(key);
+      if (firstDenial === null) firstDenial = denial;
+      idx += 1;
+      continue;
+    }
+    // Budget gate + hold for THIS candidate, after the guardrail gate (a denied candidate must never
+    // take a hold) and before the upstream call. Over its cap → skip, same as a denial; an exhausted
+    // chain surfaces as all_providers_failed, never a mid-chain 402 that would discard billed work.
+    if (!(await budgetChainAdvance(ctx, candidate))) {
+      attempted.add(key);
+      idx += 1;
+      continue;
+    }
     attempted.add(key);
     ctx.candidate = candidate;
     ctx.activeCandidate = candidate;
     ctx.attemptNumber = attemptNumber;
     ctx.fallbackFrom = fallbackFrom;
+    anyDispatched = true;
 
     const outcome = await attemptCandidate(ctx, candidate);
 
@@ -378,10 +531,14 @@ async function runNonStreamChain(ctx: PipelineContext): Promise<void> {
     // the typed-variant candidates' health, so a variant whose head breaker is OPEN would otherwise be
     // dispatched into blind, guaranteeing a failure+latency before walking to a healthy tail.
     const nextList = switchesVariant ? reorderByHealth(typed, ctx.healthSnapshot) : list;
+    // hasDispatchableCandidate (not a bare "is there an unattempted entry" scan) — a candidate
+    // denyChainAdvance would skip on the next loop iteration is not a viable fallback (see its
+    // doc comment). Applies identically whether nextList is the current chain or a freshly
+    // health-reordered typed-fallback variant.
     const canAdvance =
       mapped.isRetryable &&
       !mapped.isClientError &&
-      nextList.some((c) => !attempted.has(candidateKeyOf(c)));
+      hasDispatchableCandidate(ctx, nextList, attempted);
 
     ctx.upstreamStatus = mapped.httpStatus;
     ctx.errorCode = mapped.spillwayCode;
@@ -408,9 +565,13 @@ async function runNonStreamChain(ctx: PipelineContext): Promise<void> {
     // Retryable + more to try → reconcile this (non-final) attempt + advance.
     ctx.isFinalAttempt = false;
     await runReconcile(ctx).catch((e) => log(e, 'reconcile after non-final attempt failed'));
+    const advanceReason = mapped.errorClass ?? mapped.spillwayCode;
+    // fallbacks_total (§6.3): one per candidate advance. from_provider/from_model are the candidate
+    // we fell FROM (post-route catalog values); reason is a fixed error-class/code enum.
+    recordFallback(candidate.provider, candidate.model, advanceReason);
     fallbackFrom.push({
       attempt_number: attemptNumber,
-      reason: mapped.errorClass ?? mapped.spillwayCode,
+      reason: advanceReason,
       from: key,
     });
     attemptNumber += 1;

@@ -95,8 +95,8 @@ async function main(): Promise<void> {
   await db
     .insert(users)
     .values([
-      { id: DEV_SUB, email: 'dev@spillway.dev', name: 'Dev User' },
-      { id: SECOND_SUB, email: 'dev2@spillway.dev', name: 'Second Admin' },
+      { id: DEV_SUB, email: 'dev@spillway.cloud', name: 'Dev User' },
+      { id: SECOND_SUB, email: 'dev2@spillway.cloud', name: 'Second Admin' },
     ])
     .onConflictDoNothing();
   const [org] = await db

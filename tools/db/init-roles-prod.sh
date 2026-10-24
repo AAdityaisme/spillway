@@ -24,7 +24,19 @@ command -v psql >/dev/null || { echo "psql not found (brew install libpq)" >&2; 
 
 # 32 URL-safe bytes. Base64 is avoided: +/= need percent-encoding inside a connection string and
 # a mis-encoded password fails as an opaque auth error at boot.
-gen() { LC_ALL=C tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 40; }
+# Bound the INPUT, not the output. `tr … < /dev/urandom | head -c 40` looks fine and is fatal here:
+# head closes the pipe after 40 bytes, tr dies on SIGPIPE (141), `pipefail` propagates it and
+# `set -e` kills the script at the FIRST assignment below — silently, before any output. Measured
+# 100/100 aborts on bash 3.2. This script is step 1 of the production runbook and the only thing
+# that ever puts a real generated secret on the prod roles, so "it appears to do nothing" is the
+# worst possible failure: the operator's next move is to run init-roles.sql instead, which sets
+# password == role name on a publicly-reachable Neon endpoint — exactly what this file exists to
+# prevent. Reading a fixed 4096 bytes lets tr finish writing, and the shell slices.
+gen() {
+  local raw
+  raw=$(LC_ALL=C tr -dc 'A-Za-z0-9' < <(head -c 4096 /dev/urandom))
+  printf '%s' "${raw:0:40}"
+}
 APP_PW="$(gen)"
 JOBS_PW="$(gen)"
 
@@ -35,15 +47,17 @@ SELECT format(
   $f$
   DO $$
   BEGIN
+    -- Set the password unconditionally: this script's whole job is to install a freshly
+    -- generated one.
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'spillway_app') THEN
       CREATE ROLE spillway_app LOGIN PASSWORD %L;
     ELSE
-      ALTER ROLE spillway_app PASSWORD %L;
+      ALTER ROLE spillway_app LOGIN PASSWORD %L;
     END IF;
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'spillway_jobs') THEN
       CREATE ROLE spillway_jobs LOGIN PASSWORD %L;
     ELSE
-      ALTER ROLE spillway_jobs PASSWORD %L;
+      ALTER ROLE spillway_jobs LOGIN PASSWORD %L;
     END IF;
   END
   $$;

@@ -18,24 +18,204 @@ jobs:
     # Blocks the build if a Spillway/cloud credential shape reaches the tree (10-security §6; M0 gate).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       - name: gitleaks
         run: |
+          # pipefail: without it a failed curl still pipes empty input to tar and the step can
+          # pass having scanned nothing — a silently-absent scanner is worse than none.
+          set -euo pipefail
           VER=8.21.2
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
           ./gitleaks detect --source . --config .gitleaks.toml --no-git --redact --no-banner --exit-code 1
 
   dep-scan:
     # osv-scanner reads the pnpm lockfile against the OSV database (pnpm's own audit endpoint was
-    # retired — 410). Advisory (continue-on-error) so a transitive advisory surfaces in the logs
-    # without blocking merges; promote to blocking once the tree is triaged.
+    # retired — 410). ADVISORY BY DESIGN: osv sees the whole lockfile including the dev graph, and
+    # every finding as of the 2026-08-08 triage was dev-only (vitest/vite/testcontainers chains,
+    # confirmed with `pnpm why`). The PRODUCTION graph is gated BLOCKING by Ring 0's
+    # `pnpm audit --prod --audit-level=high` in ci.yml — that is the gate that stops a merge.
+    #
+    # The report goes to the step summary and the step is not allowed to fail: a check that is
+    # permanently red for accepted findings teaches everyone to ignore red, which costs more than
+    # it catches. Read the summary when triaging; promote to blocking if the dev graph is ever
+    # cleaned up (needs the vitest 2 -> 3 major).
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - name: osv-scanner
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: osv-scanner (advisory — prod graph is gated in ci.yml Ring 0)
         run: |
+          set -euo pipefail
           VER=1.9.2
           curl -sSfL "https://github.com/google/osv-scanner/releases/download/v${VER}/osv-scanner_linux_amd64" -o osv-scanner
           chmod +x osv-scanner
-          ./osv-scanner --lockfile=pnpm-lock.yaml
+          echo '## OSV advisory report (dev graph included — non-blocking)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ./osv-scanner --lockfile=pnpm-lock.yaml | tee -a "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  verified-secret-scan:
+    # TruffleHog complements gitleaks: gitleaks pattern-matches the working tree; trufflehog
+    # scans FULL GIT HISTORY and live-verifies candidates against the issuing service, so it
+    # blocks only on credentials that are provably alive (no regex-lookalike noise).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { fetch-depth: 0, persist-credentials: false } # full history — a secret deleted in a later commit still leaks
+      - name: trufflehog (verified secrets only)
+        run: |
+          set -euo pipefail
+          VER=3.96.0
+          curl -sSfL "https://github.com/trufflesecurity/trufflehog/releases/download/v${VER}/trufflehog_${VER}_linux_amd64.tar.gz" | tar -xz trufflehog
+          ./trufflehog git file://. --results=verified --fail --no-update
+
+  codeql:
+    # Semantic dataflow analysis (497 default JS/TS queries). This repo is private WITHOUT
+    # GitHub Advanced Security, so the code-scanning SARIF upload API 403s — we run with
+    # upload: never and gate in-job on the SARIF instead. License is fine: this tree is the
+    # same text as the public OSS repo (github.com/AAdityaisme/spillway).
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # codeql-action reads the workflow run via the API for its telemetry/status report. Without
+      # this the analyze step dies "Resource not accessible by integration" AFTER writing a
+      # perfectly good SARIF — the gate below never runs and the job is red for a non-finding.
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          languages: javascript-typescript
+        env:
+          # Scan the WHOLE TREE on pull_request too. By default codeql-action runs diff-informed on
+          # PRs (changed files only), and the gate below compares that count against a whole-repo
+          # baseline — an under-count can never exceed the baseline, so the PR gate was structurally
+          # incapable of failing. Measured on identical code: PR run = "9 findings; 0 over baseline"
+          # (pass) while main = "11 findings; 1 over baseline" (fail). That is exactly how a
+          # log-disclosure bug merged green and reddened main afterwards. Costs ~1 extra minute.
+          CODEQL_ACTION_DIFF_INFORMED_QUERIES: 'false'
+      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+        with:
+          upload: never
+          upload-database: false
+          output: codeql-results
+      - name: gate on findings (no GHAS dashboard — the job IS the gate)
+        run: |
+          set -euo pipefail
+          # Fail loudly if the SARIF is missing: a gate that silently greenlights when the scanner
+          # produced nothing is worse than no gate. `ls` is the assertion.
+          ls codeql-results/*.sarif > /dev/null
+
+          jq -r '.runs[].results[] | "\(.ruleId) \(.locations[0].physicalLocation.artifactLocation.uri) \(.locations[0].physicalLocation.region.startLine // 0) \(.message.text)"' \
+            codeql-results/*.sarif > /tmp/codeql-all.txt
+
+          # Accepted findings are COUNTED, not just matched (see .github/codeql-accepted.txt for
+          # the reasoning per line). Format there: `<ruleId> <path> <count>`.
+          #
+          # Why a count and not a bare ruleId+path: a plain match makes the gate structurally
+          # incapable of reporting the one thing several accept-reasons ask to be told about —
+          # e.g. "revisit if static.ts ever grows an authenticated path". A NEW finding of an
+          # accepted rule in an already-accepted file would be silently absorbed, which is exactly
+          # how a rule that earned its keep gets quietly undone. Comparing counts means a new
+          # occurrence anywhere still fails, and the accept stays pinned to what was reviewed.
+          #
+          # `|| true` on the greps: with `set -e`, grep exits 1 when nothing matches, so an
+          # all-comments or empty accept-list (the natural end state once everything is fixed)
+          # would kill the step with no message.
+          { grep -vE '^[[:space:]]*(#|$)' .github/codeql-accepted.txt || true; } \
+            | sed 's/#.*//' | awk 'NF>=2 {print $1" "$2" "(NF>=3?$3:1)}' | sort > /tmp/codeql-accepted.txt
+
+          awk '{print $1" "$2}' /tmp/codeql-all.txt | sort | uniq -c \
+            | awk '{print $2" "$3" "$1}' | sort > /tmp/codeql-counts.txt
+
+          : > /tmp/codeql-new.txt
+          while read -r rule path actual; do
+            allowed=$(awk -v r="$rule" -v p="$path" '$1==r && $2==p {print $3}' /tmp/codeql-accepted.txt)
+            allowed=${allowed:-0}
+            # -ne, not -gt. An UNDER-count is also a signal worth failing on: it means the scan
+            # covered less than the baseline was measured against (a scoping change, a skipped
+            # extraction, diff-informed sneaking back on), and a gate that silently accepts
+            # "found fewer problems than expected" is how a scan that analysed nothing passes.
+            # Fixing a finding is then a deliberate two-line change: fix it, drop the count.
+            if [ "$actual" -ne "$allowed" ]; then
+              echo "$rule $path — $actual finding(s), $allowed accepted:" >> /tmp/codeql-new.txt
+              awk -v r="$rule" -v p="$path" '$1==r && $2==p {$1="";$2="";print "   "$0}' /tmp/codeql-all.txt \
+                >> /tmp/codeql-new.txt
+            fi
+          done < /tmp/codeql-counts.txt
+
+          # An accept entry whose findings all went away is invisible to the loop above (it only
+          # walks findings that EXIST), so it FAILS here instead — same reasoning as the -ne above,
+          # and the loops have to agree. An accepted count of 4 dropping to 3 is treated as "the
+          # scan may have covered less than the baseline was measured against"; 4 dropping to 0 is
+          # the same signal, only stronger. Left as a notice it was the whole gate's blind spot:
+          # with nothing extracted, codeql-counts.txt is EMPTY, the first loop never runs, every
+          # accept degrades to a notice and the job goes green having analysed nothing. Verified by
+          # replaying the block against an empty findings file — exit 0 before this change, exit 1
+          # after. `ls *.sarif` does not catch it: a SARIF with zero results is still a file.
+          # Genuinely fixing a finding is a deliberate two-line change: fix it, drop the line.
+          while read -r rule path count; do
+            if ! awk -v r="$rule" -v p="$path" '$1==r && $2==p {f=1} END {exit !f}' /tmp/codeql-counts.txt; then
+              echo "$rule $path — 0 finding(s), $count accepted:" >> /tmp/codeql-new.txt
+              echo "   fixed? drop the line from .github/codeql-accepted.txt. Otherwise the scan did not cover this path." \
+                >> /tmp/codeql-new.txt
+            fi
+          done < /tmp/codeql-accepted.txt
+
+          echo "CodeQL: $(wc -l < /tmp/codeql-all.txt) finding(s) total; $(grep -c ' — ' /tmp/codeql-new.txt || true) off the accepted baseline"
+          if [ -s /tmp/codeql-new.txt ]; then
+            cat /tmp/codeql-new.txt
+            echo "::error::CodeQL findings exceed the reviewed baseline (.github/codeql-accepted.txt)"
+            exit 1
+          fi
+
+  semgrep:
+    # Registry packs for the generic classes (injection, authz, crypto misuse) plus custom
+    # repo-invariant rules in .semgrep/ (decimal-safe money, config.ts env confinement,
+    # tenancy-header confinement). --error fails the job on any finding.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: semgrep
+        run: |
+          pipx install semgrep==1.172.0
+          semgrep scan --metrics=off --error \
+            --config p/typescript --config p/owasp-top-ten --config .semgrep/ \
+            --exclude '*.test.ts' --exclude 'apps/server/test'
+
+  container-config:
+    # Checkov statically audits the Dockerfile (root user, secrets in layers, missing
+    # healthcheck…). Trivy already scans the BUILT image for CVEs in release-gates Ring 2;
+    # this catches misconfigurations before an image is ever built.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: checkov (Dockerfile)
+        run: |
+          pipx install checkov==3.3.9
+          checkov --file Dockerfile --framework dockerfile --quiet --compact
+
+  actions-supply-chain:
+    # zizmor (semantic Actions audit: injection, credential persistence, unpinned tags) +
+    # actionlint (syntax/shellcheck). This repo already ate one trivy-action tag-hijack scare
+    # (see release-gates.yml) — this is the systematic version of that one-off SHA pin.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - name: zizmor
+        run: |
+          set -euo pipefail
+          VER=1.29.0
+          curl -sSfL "https://github.com/zizmorcore/zizmor/releases/download/v${VER}/zizmor-x86_64-unknown-linux-gnu.tar.gz" | tar -xz zizmor
+          ./zizmor --no-online-audits .github/workflows/
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          VER=1.7.12
+          curl -sSfL "https://github.com/rhysd/actionlint/releases/download/v${VER}/actionlint_${VER}_linux_amd64.tar.gz" | tar -xz actionlint
+          ./actionlint

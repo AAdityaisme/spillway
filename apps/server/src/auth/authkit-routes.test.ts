@@ -273,9 +273,13 @@ describe('AuthKit hosted-login routes (M4-auth)', () => {
   });
 
   // ── M2 regression: an inconclusive check must not destroy a live session ─────────────────
-  it('401s WITHOUT clearing the cookie when session validation is inconclusive', async () => {
+  it('503s (NOT 401) without clearing the cookie when session validation is inconclusive', async () => {
     // A concurrent tab already rotated the refresh token, or WorkOS blipped. Clearing here
     // would log the user out of every tab despite a perfectly valid WorkOS session.
+    //
+    // The status code is load-bearing, not cosmetic: 401 is what a genuinely logged-out visitor
+    // gets, so answering 401 here left the SPA unable to tell "you are signed out" from "I could
+    // not reach WorkOS" — and it demoted a live session to the logged-out screen on one blip.
     const flaky = await build(
       fakeAuthKit({
         loadSession: async () => {
@@ -288,7 +292,8 @@ describe('AuthKit hosted-login routes (M4-auth)', () => {
       url: '/auth/session',
       cookies: { [SESSION_COOKIE]: 'still-good' },
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().reason).toBe('inconclusive');
     expect(res.cookies.find((c) => c.name === SESSION_COOKIE)).toBeUndefined();
   });
 
@@ -308,5 +313,73 @@ describe('AuthKit hosted-login routes (M4-auth)', () => {
     await bare.ready();
     const res = await bare.inject({ method: 'GET', url: '/auth/login' });
     expect(res.statusCode).toBe(503);
+  });
+});
+
+// ── Phase 1: /auth/* rate limiting ───────────────────────────────────────────────────────
+/**
+ * These routes each cost a WorkOS API call and sit outside the control-plane limiter by design
+ * (a logged-out browser has to reach them). Unlimited, they are a free amplifier: an anonymous
+ * loop burns the WorkOS quota and takes login down for everyone.
+ */
+describe('/auth/* rate limiting', () => {
+  const TIGHT = {
+    session: { limit: 2, windowMs: 60_000 },
+    login: { limit: 2, windowMs: 60_000 },
+  };
+
+  async function limited(now: () => number = () => 1_000): Promise<FastifyInstance> {
+    const app = Fastify({ trustProxy: 1 });
+    await app.register(authKitRoutes, {
+      authKit: fakeAuthKit(),
+      config: { NODE_ENV: 'test', PUBLIC_URL: 'http://localhost:3000' } as never,
+      rateLimit: { config: TIGHT, now },
+    });
+    await app.ready();
+    return app;
+  }
+
+  const from = (app: FastifyInstance, url: string, ip = '203.0.113.7') =>
+    app.inject({ method: 'GET', url, headers: { 'x-forwarded-for': ip } });
+
+  it('429s a /auth/session flood from one IP, with Retry-After', async () => {
+    const app = await limited();
+    expect((await from(app, '/auth/session')).statusCode).toBe(401); // no cookie, but allowed
+    expect((await from(app, '/auth/session')).statusCode).toBe(401);
+    const blocked = await from(app, '/auth/session');
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.headers['retry-after']).toBeTruthy();
+  });
+
+  it('counts login and session separately (a login burst must not lock the SPA out)', async () => {
+    const app = await limited();
+    await from(app, '/auth/login');
+    await from(app, '/auth/login');
+    expect((await from(app, '/auth/login')).statusCode).toBe(429);
+    expect((await from(app, '/auth/session')).statusCode).toBe(401);
+  });
+
+  it('buckets per IP — one abuser does not lock out everyone else', async () => {
+    const app = await limited();
+    await from(app, '/auth/login', '203.0.113.7');
+    await from(app, '/auth/login', '203.0.113.7');
+    expect((await from(app, '/auth/login', '203.0.113.7')).statusCode).toBe(429);
+    expect((await from(app, '/auth/login', '198.51.100.4')).statusCode).toBe(302);
+  });
+
+  it('releases the IP once the window rolls over', async () => {
+    let clock = 1_000;
+    const app = await limited(() => clock);
+    await from(app, '/auth/login');
+    await from(app, '/auth/login');
+    expect((await from(app, '/auth/login')).statusCode).toBe(429);
+    clock += 61_000;
+    expect((await from(app, '/auth/login')).statusCode).toBe(302);
+  });
+
+  it('exempts loopback so local dev and fastify.inject are never throttled', async () => {
+    const app = await limited();
+    for (let i = 0; i < 5; i++)
+      expect((await app.inject({ method: 'GET', url: '/auth/login' })).statusCode).toBe(302);
   });
 });

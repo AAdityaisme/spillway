@@ -15,13 +15,32 @@ primary_region = "iad"          # us-east (IAD). Change with: fly scale count --
   SPILLWAY_INSTANCE_COUNT = "1"
 
 # Release command: runs migrations before new VM takes traffic.
-# drizzle-kit migrate is idempotent; concurrent deploys are safe because
-# drizzle-kit uses advisory locks on the migrations table.
+# Migrations run via the programmatic migrator (dist/apps/server/src/db/migrate.js) — it
+# bootstraps the app/jobs roles, then applies pending migrations with drizzle-orm's
+# postgres-js migrator against MIGRATION_DATABASE_URL. Not `drizzle-kit migrate` directly.
+# Idempotent, and concurrent deploys are safe because migrate.ts takes a pg_advisory_lock
+# around the WHOLE path (roles + schema) — a second migrator blocks, then finds everything
+# already applied.
+# This comment previously claimed the safety came from "drizzle-kit uses advisory locks on the
+# migrations table". That was false: drizzle's pg-core dialect takes no advisory lock, and the
+# role DDL runs before migrate() anyway, so it was outside any lock drizzle could have held.
 [deploy]
   # migrate.ts has an import.meta.url main-guard → running it directly invokes
   # runMigrations(). (Earlier `node -e "require(...esm...)"` failed: require-of-ESM
   # is not default-on until Node 22.12; runtime image is node:22.4.)
   release_command = "node dist/apps/server/src/db/migrate.js"
+  # Default 5m is marginal for a cold migration run that includes role bootstrapping (bible §0.7.3).
+  release_command_timeout = "10m"
+  # bible §0.7.1 is a normative MUST: production deploys MUST use bluegreen. Complying literally
+  # here even though the Ring 5 pitfalls note (and §0.8.3, which only mandates min_machines_running=2
+  # for *staging*) means bluegreen needs >=2 machines to hold old+new concurrently, and prod is
+  # pinned to min_machines_running = 1 by ADR-015 ("no scale-to-zero — SSE and in-memory rate
+  # limiters"; changing that machine count is its own decision, out of scope here). With only 1
+  # machine, Fly's bluegreen has no second machine to shift traffic onto, so in practice it behaves
+  # like rolling until prod is scaled to >=2 — that's a real tension between §0.7.1 and ADR-015 that
+  # needs a proper ADR to resolve (bump prod machines, or formally except prod to canary); flagging
+  # it here rather than silently picking canary again, since §0.7.1's MUST wins absent that ADR.
+  strategy = "bluegreen"
 
 [[vm]]
   size = "shared-cpu-1x"

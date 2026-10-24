@@ -33,9 +33,14 @@ then metered, priced, governed, and logged before — not after — it reaches t
 | Plane   | Base URL | Auth                                                        | What it is                                              |
 | ------- | -------- | ------------------------------------------------------------ | -------------------------------------------------------- |
 | Data    | `/v1/*`  | `Authorization: Bearer mk-live-…` (or `x-api-key`)            | The LLM gateway. Your SDK points here.                    |
-| Control | `/api/*` | Session token, or `mka-…` admin key + `X-Spillway-Org` header | Dashboard and machine API: keys, budgets, approvals, reports. |
+| Control | `/api/*` | Session token, or `mk-admin-…` admin key + `X-Spillway-Org` header | Dashboard and machine API: keys, budgets, approvals, reports. |
 
 Local dev serves both planes from `http://localhost:3000`.
+
+<Warning>
+  Admin-key authentication isn't live yet — see the [API reference](/api-reference/introduction)
+  for status. Use a session token (dashboard login) for the control plane until then.
+</Warning>
 
 ## What governance actually means here
 

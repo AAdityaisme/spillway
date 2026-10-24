@@ -1,0 +1,273 @@
+# .github/workflows/staging-drills.yml  (bible part-3/05-release-foundations §0.5, Ring 3)
+#
+# Three sequential drills against THROWAWAY Neon branches, proving the migration/rollback/backup
+# story actually works before it's needed in an incident. Execution order is A -> C -> B, not
+# A -> B -> C as numbered in the spec: Drill C needs to pg_dump branch-a's FULLY MIGRATED state
+# (§0.5.4), and Drill B destructively rolls branch-a back to pre-migration (§0.5.3) — so C must
+# read branch-a before B rewinds it. All three assertions still run and are still reported as
+# Drill A/B/C.
+#
+# No-ops cleanly (green, with a ::notice::) until NEON_API_KEY/NEON_PROJECT_ID exist — staging
+# is not provisioned yet (Half B).
+name: Staging migration drills
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC (bible §0.5.1: drills also run independent of deploys)
+
+concurrency:
+  group: staging-drills
+  cancel-in-progress: false # never cancel mid-drill — branches created so far still need if:always() cleanup
+
+permissions:
+  contents: read
+
+jobs:
+  check-secrets:
+    name: check Neon secrets present
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      - name: Gate on NEON_API_KEY / NEON_PROJECT_ID
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -n "${NEON_API_KEY:-}" ] && [ -n "${NEON_PROJECT_ID:-}" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Staging migration drills skipped — NEON_API_KEY / NEON_PROJECT_ID are not set. Staging is not provisioned yet (Half B); this workflow no-ops cleanly until then."
+          fi
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+
+  drills:
+    name: staging migration drills (A fresh-forward / C backup-restore / B PITR rollback)
+    needs: check-secrets
+    if: needs.check-secrets.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+
+      # Every action here is pinned to a full commit SHA, never a tag — a moved tag would run
+      # arbitrary code with this job's Neon secrets in scope. Same pins as ci.yml/release-gates.yml.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        # No pnpm cache (zizmor cache-poisoning), matching release-gates.yml's migration-drill:
+        # this job holds NEON_API_KEY and creates/destroys real branches, so a poisoned cache
+        # restored on the weekly schedule would execute with those creds.
+        with: { node-version: '22' }
+      - run: pnpm install --frozen-lockfile
+      # @spillway/shared + @spillway/pricing resolve to their dist/ output — db:migrate (tsx,
+      # not the compiled dist/migrate.js) still needs them built first (mirrors ci.yml unit job).
+      - run: pnpm build:packages
+
+      # neonctl (not neondatabase/create-branch-action) drives every branch operation across all
+      # three drills — create, connection-string, restore, delete. The action only covers
+      # create/delete; Drill B's point-in-time restore has no action equivalent (bible pitfall:
+      # "Neon's branching API requires the Neon CLI ... not available by default on ubuntu-latest").
+      # One CLI for everything beats mixing an action for creation with CLI-only restore calls.
+      # Version-pinned, not floating: unpinned `npm i -g neonctl` resolves a fresh, unreviewed
+      # transitive graph on a runner that holds NEON_API_KEY. zizmor's adhoc-packages finding is
+      # accepted at this pin — neonctl is a workflow-only binary, so putting it in the workspace
+      # lockfile would drag its whole graph into every dev install and into `pnpm audit`'s scope
+      # for something that runs on one weekly CI job. Bumping the pin is a deliberate review step.
+      - name: Install neonctl
+        run: npm install -g neonctl@2.46.0 # zizmor: ignore[adhoc-packages]
+
+      - name: 'Drill A — fresh-DB forward migration'
+        run: |
+          set -euo pipefail
+          BRANCH_NAME="drill-a-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "Creating Neon branch ${BRANCH_NAME}..."
+          RESP=$(neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --output json)
+          # Neon's branch-create response nests the new branch under .branch.id (public API
+          # CreatedBranch schema). Unverified against a live call — no staging project exists yet
+          # (Half B). If this ever prints the FATAL below, confirm the real field path with
+          # `neonctl branches create --output json | jq .` once staging is provisioned and fix here.
+          BRANCH_A_ID=$(echo "$RESP" | jq -r '.branch.id // empty')
+          if [ -z "$BRANCH_A_ID" ]; then
+            echo "FATAL: could not parse branch id from neonctl create output:" >&2
+            echo "$RESP" >&2
+            exit 1
+          fi
+          echo "Created branch: $BRANCH_A_ID"
+          echo "BRANCH_A_ID=$BRANCH_A_ID" >> "$GITHUB_ENV"
+
+          # Wait for the branch's compute endpoint to accept connections before touching it.
+          RAW_URL=""
+          for _ in $(seq 1 20); do
+            RAW_URL=$(neonctl connection-string "$BRANCH_A_ID" --project-id "$NEON_PROJECT_ID" || true)
+            if [ -n "$RAW_URL" ] && psql "$RAW_URL" -c 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 3
+          done
+          echo "::add-mask::$RAW_URL"
+          [ -n "$RAW_URL" ] || { echo "FATAL: branch $BRANCH_A_ID never accepted a connection" >&2; exit 1; }
+
+          # The restore point Drill B rewinds to (§0.5.3) — captured only once the branch is
+          # confirmed live, so Neon's PITR window unambiguously covers it. Must be BEFORE any SQL
+          # (including init-roles.sql) runs, so "restored" == "as if the branch just came up".
+          PRE_MIGRATION_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "PRE_MIGRATION_TS=$PRE_MIGRATION_TS" >> "$GITHUB_ENV"
+          echo "Pre-migration restore point: $PRE_MIGRATION_TS"
+
+          # RAW_URL = postgres://<owner>:<pw>@<host>/<db>?sslmode=require — strip to host/db/query
+          # and rebuild app/jobs URLs with the fixed credentials init-roles.sql creates (matches
+          # the CI integration job convention: spillway_app:spillway_app / spillway_jobs:spillway_jobs).
+          HOSTDB="${RAW_URL#postgres://*@}"
+          export MIGRATION_DATABASE_URL="$RAW_URL"
+          export DATABASE_URL="postgres://spillway_app:spillway_app@${HOSTDB}"
+          export DATABASE_URL_JOBS="postgres://spillway_jobs:spillway_jobs@${HOSTDB}"
+
+          psql "$MIGRATION_DATABASE_URL" -f apps/server/src/db/migrations/init-roles.sql
+          pnpm db:migrate
+
+          # Computed, never hardcoded (§0.5.2): row count must equal the number of tracked
+          # migration entries, not a number we typed in and forgot to bump.
+          EXPECTED=$(jq '.entries | length' apps/server/src/db/migrations/meta/_journal.json)
+          APPLIED=$(psql "$MIGRATION_DATABASE_URL" -t -A -c "select count(*) from drizzle.__drizzle_migrations")
+          echo "Applied migrations: $APPLIED (expected: $EXPECTED)"
+          mkdir -p drill-output
+          {
+            echo "branch=$BRANCH_A_ID"
+            echo "expected_migrations=$EXPECTED"
+            echo "applied_migrations=$APPLIED"
+          } | tee drill-output/drill-a.log
+          [ "$APPLIED" = "$EXPECTED" ] || { echo "FATAL: Drill A migration count mismatch (applied=$APPLIED expected=$EXPECTED)" >&2; exit 1; }
+
+      - name: 'Drill C — backup and schema restore'
+        run: |
+          set -euo pipefail
+          RESTORE_NAME="drill-c-restore-${{ github.run_id }}-${{ github.run_attempt }}"
+          RESP=$(neonctl branches create --name "$RESTORE_NAME" --project-id "$NEON_PROJECT_ID" --output json)
+          BRANCH_C_ID=$(echo "$RESP" | jq -r '.branch.id // empty')
+          if [ -z "$BRANCH_C_ID" ]; then
+            echo "FATAL: could not parse branch id from neonctl create output:" >&2
+            echo "$RESP" >&2
+            exit 1
+          fi
+          echo "Created restore-target branch: $BRANCH_C_ID"
+          echo "BRANCH_C_ID=$BRANCH_C_ID" >> "$GITHUB_ENV"
+
+          RESTORE_RAW_URL=""
+          for _ in $(seq 1 20); do
+            RESTORE_RAW_URL=$(neonctl connection-string "$BRANCH_C_ID" --project-id "$NEON_PROJECT_ID" || true)
+            if [ -n "$RESTORE_RAW_URL" ] && psql "$RESTORE_RAW_URL" -c 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 3
+          done
+          echo "::add-mask::$RESTORE_RAW_URL"
+          [ -n "$RESTORE_RAW_URL" ] || { echo "FATAL: branch $BRANCH_C_ID never accepted a connection" >&2; exit 1; }
+
+          # migration 0002_rls_policies.sql emits `CREATE POLICY ... TO spillway_app` — that's
+          # literal DDL, not ACL metadata, so pg_dump --no-acl below does NOT cover it. The
+          # restore target needs these roles to exist BEFORE pg_restore replays the policies,
+          # or restore fails on "role spillway_app does not exist".
+          psql "$RESTORE_RAW_URL" -f apps/server/src/db/migrations/init-roles.sql
+
+          # Re-derive branch-A's connection string — Drill A already proved it's fully migrated.
+          SOURCE_RAW_URL=$(neonctl connection-string "$BRANCH_A_ID" --project-id "$NEON_PROJECT_ID")
+          echo "::add-mask::$SOURCE_RAW_URL"
+
+          mkdir -p drill-output
+          DUMP_FILE="drill-output/drill-c-$(date -u +%Y%m%dT%H%M%SZ).dump"
+          # --no-owner --no-acl mirrors tools/backup/backup-weekly.sh's convention: sidesteps any
+          # OWNER TO / GRANT-derived ACL mismatch between source and a freshly-created branch.
+          pg_dump "$SOURCE_RAW_URL" --format=custom --no-owner --no-acl --file="$DUMP_FILE"
+          pg_restore --dbname="$RESTORE_RAW_URL" "$DUMP_FILE"
+
+          HASH_QUERY="select md5(string_agg(table_name||column_name||data_type, '' order by table_name, column_name)) from information_schema.columns where table_schema='public'"
+          SOURCE_HASH=$(psql "$SOURCE_RAW_URL" -t -A -c "$HASH_QUERY")
+          RESTORE_HASH=$(psql "$RESTORE_RAW_URL" -t -A -c "$HASH_QUERY")
+          {
+            echo "source_branch=$BRANCH_A_ID"
+            echo "restore_branch=$BRANCH_C_ID"
+            echo "source_hash=$SOURCE_HASH"
+            echo "restore_hash=$RESTORE_HASH"
+          } | tee drill-output/drill-c.log
+          [ "$SOURCE_HASH" = "$RESTORE_HASH" ] || { echo "FATAL: Drill C schema hash mismatch after restore" >&2; exit 1; }
+
+      - name: 'Drill B — point-in-time rollback'
+        run: |
+          set -euo pipefail
+          echo "Restoring $BRANCH_A_ID to its pre-migration state at $PRE_MIGRATION_TS ..."
+          # ^self@<timestamp> restores a branch to an earlier point in ITS OWN history (as opposed
+          # to `<branch> <source-branch>@<timestamp>`, which restores FROM another branch).
+          #
+          # --preserve-under-name is REQUIRED here, not optional: Neon's restore API requires
+          # preserve_under_name whenever source_branch_id equals the TARGET branch's own id, which
+          # is exactly what `^self@<ts>` means. Confirmed against the neonctl CLI reference, the
+          # Neon REST API reference, and the branch-restore guide — omitting it makes the API
+          # reject the call, neonctl exits non-zero, and `set -euo pipefail` kills this step every
+          # single time a self-restore runs. Neon auto-creates a NEW branch under this name to hold
+          # branch-a's pre-restore (fully-migrated) state, so it must be tracked and deleted in
+          # cleanup below or every green drill run leaks one branch permanently.
+          PRESERVED_BRANCH_NAME="drill-a-preserved-${{ github.run_id }}-${{ github.run_attempt }}"
+          echo "PRESERVED_BRANCH_NAME=$PRESERVED_BRANCH_NAME" >> "$GITHUB_ENV"
+          neonctl branches restore "$BRANCH_A_ID" "^self@${PRE_MIGRATION_TS}" --preserve-under-name "$PRESERVED_BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+
+          RESTORED_URL=""
+          for _ in $(seq 1 20); do
+            RESTORED_URL=$(neonctl connection-string "$BRANCH_A_ID" --project-id "$NEON_PROJECT_ID" || true)
+            if [ -n "$RESTORED_URL" ] && psql "$RESTORED_URL" -c 'select 1' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 3
+          done
+          echo "::add-mask::$RESTORED_URL"
+          [ -n "$RESTORED_URL" ] || { echo "FATAL: branch $BRANCH_A_ID never accepted a connection after restore" >&2; exit 1; }
+
+          # to_regclass returns NULL (blank under -t -A) when the relation doesn't exist. The
+          # migrator creates drizzle.__drizzle_migrations itself, so its absence after restore IS
+          # the assertion that the rollback rewound past migration 0000 (§0.5.3).
+          REMAINS=$(psql "$RESTORED_URL" -t -A -c "select to_regclass('drizzle.__drizzle_migrations')")
+          mkdir -p drill-output
+          {
+            echo "branch=$BRANCH_A_ID"
+            echo "restore_point=$PRE_MIGRATION_TS"
+            echo "preserved_branch_name=$PRESERVED_BRANCH_NAME"
+            echo "drizzle_migrations_regclass=${REMAINS:-<null>}"
+          } | tee drill-output/drill-b.log
+          [ -z "$REMAINS" ] || { echo "FATAL: drizzle.__drizzle_migrations still exists after PITR rollback ($REMAINS)" >&2; exit 1; }
+
+      - name: Upload drill outputs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-drill-outputs-${{ github.run_id }}
+          path: drill-output/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Delete throwaway Neon branches
+        if: always()
+        run: |
+          set -uo pipefail # no -e: best-effort cleanup — keep trying remaining branches even if one delete fails
+          for b in "${BRANCH_A_ID:-}" "${BRANCH_C_ID:-}"; do
+            if [ -n "$b" ]; then
+              echo "Deleting branch $b ..."
+              neonctl branches delete "$b" --project-id "$NEON_PROJECT_ID" || echo "WARN: failed to delete branch $b — remove manually" >&2
+            fi
+          done
+          # Drill B's ^self restore auto-creates an extra branch under PRESERVED_BRANCH_NAME to hold
+          # branch-a's pre-restore state (see the --preserve-under-name comment in Drill B) — it is
+          # not in BRANCH_A_ID/BRANCH_C_ID above and must be deleted separately or it leaks forever.
+          # neonctl accepts a branch id OR name for `branches delete` (CLI reference: `id|name`
+          # positional arg); using the name directly here avoids depending on parsing restore's
+          # output format, which is a strictly bigger unknown than the get/create JSON paths already
+          # flagged elsewhere in this file.
+          if [ -n "${PRESERVED_BRANCH_NAME:-}" ]; then
+            echo "Deleting preserved-under-name branch $PRESERVED_BRANCH_NAME ..."
+            neonctl branches delete "$PRESERVED_BRANCH_NAME" --project-id "$NEON_PROJECT_ID" || echo "WARN: failed to delete branch $PRESERVED_BRANCH_NAME — remove manually" >&2
+          fi

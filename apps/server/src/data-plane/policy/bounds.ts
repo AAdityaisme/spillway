@@ -9,6 +9,18 @@ export const MAX_COST = 200; // max static cost units → cel_cost_exceeded
 export const MAX_NODES = 64; // max AST node count → cel_ast_too_large
 export const MAX_REGEX_LEN = 128; // max matches() regex literal length → cel_regex_too_long
 
+/**
+ * Per-org cap on guardrail policies (red-team P0). evaluateGuardrails (./guardrails.ts) is
+ * intentionally EXHAUSTIVE — no first-match short-circuit, by design (16 §3, the F1 fix): every
+ * enabled policy must be checked so a `deny` can never be shadowed and so shadow/flag accounting
+ * stays complete. That correctness property means the ONLY lever for bounding per-request CPU is
+ * capping N at authoring time, enforced in control-plane/routes/policies.ts on every POST. 200 is
+ * generously above any real guardrail set (orgs seen in the wild run low tens) while keeping a
+ * full per-request scan — structural match + optional CEL run, itself bounded by MAX_COST/MAX_NODES
+ * above — cheap even in the worst case. Raise only with a measured per-request latency budget.
+ */
+export const MAX_POLICIES_PER_ORG = 200;
+
 /** Comprehension macros are the only unbounded-work CEL constructs — banned. has() is the only
  *  permitted macro (it expands to a test-only field select, not a comprehension). */
 export const BANNED_MACROS = ['map', 'filter', 'all', 'exists', 'exists_one'] as const;

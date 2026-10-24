@@ -6,16 +6,29 @@
  * throw or block chain creation.
  */
 
-/** A delegation active at the resolution instant (starts_at <= now <= ends_at). */
+/**
+ * A delegation active at the resolution instant (starts_at <= now <= ends_at).
+ *
+ * The timestamps are `Date | string` because that is the truth, not a convenience: the only
+ * production caller (materialize.ts) reads these rows through a raw `tx.execute`, and postgres-js
+ * hands raw results back UNPARSED — a `timestamptz` arrives as `'2026-08-09 01:32:59.471707+00'`,
+ * not a Date. Declaring `Date` here made the cast at the call site a lie that TypeScript then
+ * certified, and `.getTime()` below threw a TypeError on every approval creation once any
+ * delegation row existed. Same shape as `AutomationRule.notify_only_until` in automation/safety.ts,
+ * which types the union honestly for the same reason.
+ */
 export interface ActiveDelegation {
   from_user: string;
   to_user: string;
-  starts_at: Date;
-  ends_at: Date;
+  starts_at: Date | string;
+  ends_at: Date | string;
 }
 
 /** Max hops before we stop following the chain (§2.5 step 2). */
 const MAX_HOPS = 8;
+
+/** Epoch ms from either driver shape. Normalising here keeps every caller safe, not just today's. */
+const epochMs = (t: Date | string): number => (t instanceof Date ? t : new Date(t)).getTime();
 
 /**
  * The active delegation whose `from_user === cur`. At most one is expected; if several overlap, the
@@ -29,8 +42,8 @@ function activeDelegationFrom(
   let best: ActiveDelegation | undefined;
   for (const d of delegations) {
     if (d.from_user !== cur) continue;
-    if (d.starts_at.getTime() > now.getTime() || now.getTime() > d.ends_at.getTime()) continue;
-    if (best === undefined || d.starts_at.getTime() > best.starts_at.getTime()) best = d;
+    if (epochMs(d.starts_at) > now.getTime() || now.getTime() > epochMs(d.ends_at)) continue;
+    if (best === undefined || epochMs(d.starts_at) > epochMs(best.starts_at)) best = d;
   }
   return best;
 }

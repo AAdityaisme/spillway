@@ -7,7 +7,7 @@ A budget is a spend cap on a **scope**, over a **period**, with a **mode** that 
 happens when it's crossed.
 
 ```jsonc
-// POST /api/budgets   (session or admin-key auth)
+// POST /api/budgets   (session auth)
 {
   "scopeType": "virtual_key",
   "scopeId": "<key-uuid>",
@@ -55,7 +55,7 @@ happens when it's crossed.
       "scope_type": "virtual_key",
       "scope_id": "<key-uuid>",
       "period": "day",
-      "period_key": "2026-08",
+      "period_key": "2026-08-08",
       "spent_usd": "20.00",
       "limit_usd": "20.00"
     }

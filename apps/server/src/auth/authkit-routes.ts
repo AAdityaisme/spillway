@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import type { Config } from '../config.js';
 import { makeAuthKit, authKitConfigured, type AuthKit } from './authkit.js';
+import { registerAuthRateLimit, type AuthRateConfig } from './auth-rate-limit.js';
 
 /**
  * AuthKit hosted-login routes (M4-auth, ADR-023).
@@ -25,6 +26,8 @@ export interface AuthKitRoutesDeps {
   config?: Config;
   /** Test seam: inject a fake AuthKit instead of hitting WorkOS. */
   authKit?: AuthKit;
+  /** Test seam: tiny limits + a fake clock so the limiter is drivable in a few requests. */
+  rateLimit?: { config?: AuthRateConfig; now?: () => number };
 }
 
 /**
@@ -71,13 +74,16 @@ function stateCookieOptions(config?: Config): Parameters<FastifyReply['setCookie
 
 export const authKitRoutes: FastifyPluginAsync<AuthKitRoutesDeps> = async (
   fastify,
-  { config, authKit },
+  { config, authKit, rateLimit },
 ) => {
   const kit = authKit ?? (config && authKitConfigured(config) ? makeAuthKit(config) : null);
 
   if (!fastify.hasReplyDecorator('setCookie')) {
     await fastify.register(cookie);
   }
+
+  // Encapsulated: this hook fires for the /auth/* routes below and nothing else.
+  registerAuthRateLimit(fastify, rateLimit?.config, rateLimit?.now);
 
   // Where to land the browser after login/logout. The SPA is served from the same origin by
   // staticPlugin, so a relative path is correct and avoids an open-redirect surface entirely.
@@ -181,14 +187,19 @@ export const authKitRoutes: FastifyPluginAsync<AuthKitRoutesDeps> = async (
     try {
       session = await k.loadSession(sealed);
     } catch (err) {
-      // Could not reach a verdict (WorkOS unreachable, or a concurrent tab already rotated
-      // this refresh token). 401 so the SPA retries, but do NOT clear the cookie — doing so
-      // would turn a blip, or a two-tab race, into a real logout.
+      // Could not reach a verdict (WorkOS unreachable, or a concurrent tab already rotated this
+      // refresh token). 503, NOT 401, and do NOT clear the cookie.
+      //
+      // This used to answer 401 "so the SPA retries" — but 401 is the same answer we give a real
+      // logged-out visitor, so the SPA could not tell them apart and demoted a live session to the
+      // logged-out screen on one WorkOS blip. The status code is the only channel that carries the
+      // difference, so it has to be honest: 401 means "this cookie is not a session", 503 means
+      // "ask me again". The client keys on exactly that (lib/auth.tsx SessionResult).
       request.log.warn(
         { err: err instanceof Error ? err.message : 'unknown' },
         'session validation was inconclusive; leaving the cookie intact',
       );
-      return reply.code(401).send({ authenticated: false });
+      return reply.code(503).send({ authenticated: false, reason: 'inconclusive' });
     }
 
     if (!session) {

@@ -1,10 +1,13 @@
 import { sql } from 'drizzle-orm';
 import { randomUUID, createHmac } from 'node:crypto';
+import type { Dispatcher } from 'undici';
 import type { DatabaseClient } from '../../db/client.js';
 import { asJobs } from '../../db/jobs.js';
 import { withOrg } from '../../db/tenancy.js';
 import { defaultSeverityForKind } from '../alert-kinds.js';
 import { alertDeliveryDeadLetterTotal } from '../../observability/metrics.js';
+import { assertSafeBaseUrl } from '../../auth/ssrf.js';
+import { ssrfGuardedDispatcher } from '../../data-plane/egress-guard.js';
 
 /** After this many failed sends an event is dead-lettered (excluded from the claim + counted). */
 const MAX_DELIVERY_ATTEMPTS = 5;
@@ -108,12 +111,49 @@ type FetchLike = (
 ) => Promise<{ ok: boolean; status: number }>;
 
 /**
+ * F1 red-team round 2: `assertSafeBaseUrl` ran at alert create/update (alerts.ts) but a channel URL
+ * validated then is not re-checked at send time — a record can simply change between create and
+ * delivery, and a write-time-only check can never catch that. Call this immediately before EVERY
+ * dispatch (both the drain in `runAlertDelivery` and the synchronous `deliverTestFire` path), not
+ * once at write time. No trustedHosts: delivery is deliberately the strict floor, same posture as
+ * dispatch-time revalidation for provider `base_url` (data-plane/providers/openai-compat.ts).
+ */
+export function assertSafeChannel(channel: Channel): void {
+  if (channel.type === 'slack') assertSafeBaseUrl(channel.webhook_url);
+  else if (channel.type === 'webhook') assertSafeBaseUrl(channel.url);
+}
+
+/**
  * The production channel router: Slack Incoming-Webhook (Block Kit), generic HMAC-signed webhook, and
  * email (Resend). Every channel body carries ONLY the severity, event kind, org id, and event id — the
  * details are looked up by event id in the dashboard. A non-2xx (slack/webhook) or a throwing email send
  * bubbles up so the drain retries the row.
+ *
+ * `redirect: 'manual'` (F1): the global/undici `fetch` defaults to `redirect: 'follow'`, which walks
+ * straight through `assertSafeBaseUrl` — a validated public URL that 302s to 169.254.169.254 (or any
+ * internal address) would be silently followed. Manual mode returns the 3xx response itself instead of
+ * chasing Location, and both branches below already treat any non-2xx status as a failed delivery, so a
+ * redirect naturally dead-letters/retries like any other failure rather than reaching an internal host.
+ *
+ * NOTE on DNS rebinding (P0 red-team fix): `assertSafeBaseUrl` (assertSafeChannel, above) is a HOSTNAME
+ * check — it never resolves DNS — so re-running it at delivery time closes "the record changed since
+ * create" only for the cases the checker can see syntactically (a literal IP, `localhost`, `*.internal`,
+ * …); it does NOT by itself catch a public name whose A/AAAA record resolves to a private/link-local
+ * address at request time (e.g. a `nip.io`-style hostname like `169.254.169.254.nip.io`, which is a
+ * syntactically-public name that resolves straight to the cloud metadata IP). That's why every dispatch
+ * below is pinned to the SAME connect-time guard provider egress uses (data-plane/egress-guard.ts,
+ * `ssrfGuardedDispatcher`): it resolves the hostname itself, drops every reserved/private/link-local
+ * address, and pins the connect to a surviving public IP — so there is no TOCTOU window between "looks
+ * like a public hostname" and "what it actually connects to". `opts.dispatcher` is a test seam only
+ * (defaults to the real guarded dispatcher); tests that need a hermetic loopback origin (e.g. the
+ * redirect-following tests below) inject a plain `undici.Agent` instead.
  */
-export function makeHttpChannelSink(opts: { fetch: FetchLike; email?: EmailSender }): ChannelSink {
+export function makeHttpChannelSink(opts: {
+  fetch: FetchLike;
+  email?: EmailSender;
+  dispatcher?: Dispatcher;
+}): ChannelSink {
+  const dispatcher = opts.dispatcher ?? ssrfGuardedDispatcher();
   return {
     async deliver(channel, alert) {
       const kind = String(alert.payload['event_type'] ?? 'alert');
@@ -130,8 +170,15 @@ export function makeHttpChannelSink(opts: { fetch: FetchLike; email?: EmailSende
               { type: 'context', elements: [{ type: 'mrkdwn', text: context }] },
             ],
           }),
+          redirect: 'manual',
+          dispatcher,
         });
-        if (!res.ok) throw new Error(`slack webhook ${res.status}`);
+        if (!res.ok) {
+          const redirected = res.status >= 300 && res.status < 400;
+          throw new Error(
+            redirected ? `slack webhook redirected (${res.status})` : `slack webhook ${res.status}`,
+          );
+        }
       } else if (channel.type === 'webhook') {
         // Privacy-safe body — routing fields only. HMAC-SHA256 over the exact bytes (§5.6).
         const body = JSON.stringify({
@@ -149,10 +196,17 @@ export function makeHttpChannelSink(opts: { fetch: FetchLike; email?: EmailSende
             'x-spillway-event': kind,
           },
           body,
+          redirect: 'manual',
+          dispatcher,
         });
-        // 2xx = success; 4xx and 5xx both throw (retried until the cap → dead-letter). A finer
-        // 4xx=permanent distinction is a follow-up; retrying a 4xx a few times is harmless.
-        if (res.status < 200 || res.status >= 300) throw new Error(`webhook ${res.status}`);
+        // 2xx = success; 3xx (an unfollowed redirect — see doc comment above), 4xx and 5xx all throw
+        // (retried until the cap → dead-letter). A finer 4xx=permanent distinction is a follow-up.
+        if (res.status < 200 || res.status >= 300) {
+          const redirected = res.status >= 300 && res.status < 400;
+          throw new Error(
+            redirected ? `webhook redirected (${res.status})` : `webhook ${res.status}`,
+          );
+        }
       } else {
         if (!opts.email) throw new Error('email channel configured but no email sender wired');
         await opts.email.send(
@@ -220,6 +274,7 @@ export async function deliverTestFire(
     args.channels.map(async (channel): Promise<TestChannelResult> => {
       const base = { channel: channel.type, target: targetOf(channel) };
       try {
+        assertSafeChannel(channel); // F1: re-validate at send time, not just at write time
         await withTimeout(sink.deliver(channel, alert), timeoutMs);
         return { ...base, ok: true };
       } catch (err) {
@@ -283,7 +338,12 @@ export async function runAlertDelivery(deps: DeliveryDeps): Promise<DeliveryResu
     const alert: DeliverableAlert = { eventId: row.id, orgId: row.org_id, severity, payload };
     try {
       // Deliver to every configured channel; ANY failure re-drains the whole event (§5.2).
-      for (const channel of channels) await deps.sink.deliver(channel, alert);
+      // F1: re-validate each channel URL immediately before dispatch — a write-time-only check
+      // (alerts.ts) can't catch a target that changed, or was rebound, after the alert was created.
+      for (const channel of channels) {
+        assertSafeChannel(channel);
+        await deps.sink.deliver(channel, alert);
+      }
       await withOrg(deps.db, row.org_id, (tx) =>
         tx.execute(sql`
           update alert_events

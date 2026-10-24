@@ -1,0 +1,59 @@
+## The `X-Spillway-Org` request header is the raw, unverified tenant claim: it names an
+## org id, but proves nothing about the caller's membership in it. Exactly one place is
+## allowed to read it off the request — the tenancy preHandler hook, which resolves
+## membership (lookupMembership) and only THEN arms the request-scoped OrgContext
+## (org-context.ts / orgContext.run). Every other consumer of "which org is this request
+## for" must go through the org-context accessor (`orgContext.require()`/`orgContext.get()`),
+## which is guaranteed to have passed that membership check.
+##
+## NOTE on the owning file: a raw `grep` for the header name suggests org-context.ts as the
+## owner (it's the module that defines OrgContext/orgContext), but org-context.ts itself
+## never touches `request.headers` — it's a pure AsyncLocalStorage wrapper. The actual read
+## happens in the tenancy preHandler hook that calls it
+## (apps/server/src/control-plane/middleware/tenancy.ts:27), so that is the file excluded
+## below. Verified by reading both files, not by trusting the grep hit.
+
+rules:
+  - id: tenancy-header-outside-owner
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      request.headers['x-spillway-org'] read outside the tenancy hook. This header is an
+      unverified tenant claim — reading it directly bypasses the membership check the
+      tenancy preHandler hook performs before arming OrgContext. Use
+      orgContext.require()/orgContext.get() (apps/server/src/org-context.ts) instead of
+      reading the header yourself.
+    patterns:
+      - pattern-either:
+          - pattern: $REQ.headers['x-spillway-org']
+          - pattern: $REQ.headers["x-spillway-org"]
+          # Indirection through a generic header accessor. validate.ts:19 ALREADY defines
+          # `header(ctx, name)` and uses it for four other x-spillway-* headers, so reaching for
+          # it is the natural move for the next person who needs the org header in the data
+          # plane — and the direct-subscript patterns above would never see it. Matching the
+          # header NAME as an argument catches any such helper regardless of its name.
+          # Red-team H5, 2026-08-08.
+          - pattern: $F(..., 'x-spillway-org', ...)
+          - pattern: $F(..., "x-spillway-org", ...)
+          # Destructuring form.
+          - pattern: |
+              const { 'x-spillway-org': $V } = $REQ.headers
+          - pattern: |
+              const { "x-spillway-org": $V } = $REQ.headers
+    paths:
+      include:
+        - '**/apps/server/src'
+      exclude:
+        - '**/*.test.ts'
+        - '**/apps/server/test'
+        # accepted 2026-08-08: the tenancy preHandler hook itself — the sole legitimate
+        # reader. Resolves + validates the header, checks membership via lookupMembership,
+        # then arms OrgContext for the rest of the request (orgContext.run). Everything
+        # downstream must read orgContext, not the header.
+        - '**/apps/server/src/control-plane/middleware/tenancy.ts'
+        # accepted 2026-08-08: app.ts's pino LOG_REDACT_PATHS only contains the header name
+        # as a redaction-path STRING (`'req.headers["x-spillway-org"]'`) — it never actually
+        # accesses `request.headers`, so today it isn't matched by this rule. Excluded
+        # anyway per the task's explicit call-out, so it stays allowed if that redaction
+        # list is ever rewritten to build the path via real property access.
+        - '**/apps/server/src/app.ts'

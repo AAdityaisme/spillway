@@ -19,9 +19,16 @@ import { ApiError, api, type Policy } from '../lib/api.js';
 import { useAuth } from '../lib/auth.js';
 import { roleAtLeast, useOrg } from '../lib/org.js';
 
+// `require_approval` is deliberately ABSENT here while present in the label/badge/hint maps below.
+// The API rejects authoring one with a 422 (control-plane/routes/policies.ts assertSupportedEffect):
+// 16 §3.4 settled the intent but not the GRANT mechanism, so an approved guardrail-approval has no
+// defined way to let the caller's retry through, and the request-time path would be a permanent 403
+// mislabelled "approval required". Offering it here meant the form promised a queue that does not
+// exist and then 422'd on save. The maps keep their entry because `Record<Policy['effect'], …>` is
+// exhaustive and because a row authored before that guard has to stay renderable.
+// Restore this option in the same commit that lands the grant model.
 const EFFECT_OPTIONS: SelectOption[] = [
   { value: 'deny', label: 'Deny' },
-  { value: 'require_approval', label: 'Require approval' },
   { value: 'flag', label: 'Flag' },
 ];
 const ENFORCEMENT_OPTIONS: SelectOption[] = [
@@ -40,7 +47,8 @@ const EFFECT_BADGE: Record<Policy['effect'], 'amber' | 'blue' | 'neutral'> = {
 };
 const EFFECT_HINT: Record<Policy['effect'], string> = {
   deny: 'Blocks the request outright and returns the reason below to the caller.',
-  require_approval: 'Holds the request in the approval queue before it reaches the provider.',
+  require_approval:
+    'Not available yet — the approval-grant mechanism is pending an ADR. Existing policies still show here; use deny or flag.',
   flag: 'Logs the match for review but lets the request continue.',
 };
 

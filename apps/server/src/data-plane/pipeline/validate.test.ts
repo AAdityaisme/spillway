@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runValidate } from './validate.js';
+import { runValidate, completionCount } from './validate.js';
 import type { PipelineContext } from './context.js';
 import type { PolicyBundle } from './auth.js';
 
@@ -140,6 +140,20 @@ describe('runValidate', () => {
     const b = c.validatedBody as Record<string, unknown>;
     expect(b.max_tokens).toBe(256);
     expect(b.original_max_tokens).toBeUndefined(); // no client value to record
+  });
+});
+
+// completionCount is the ONE definition of the `n` spend multiplier — the output clamp, the request
+// features, and the BUDGET hold all read it. They disagreed before (the hold ignored `n` entirely,
+// red-team B5), so pin the edges here rather than in three places.
+describe('completionCount (red-team B5)', () => {
+  it('returns n for a positive integer', () => {
+    expect(completionCount({ n: 32 })).toBe(32);
+  });
+
+  it('falls back to 1 for anything that is not a positive integer', () => {
+    for (const n of [undefined, null, 0, -4, 1.5, NaN, Infinity, '8', true, [8]])
+      expect(completionCount({ n })).toBe(1);
   });
 });
 

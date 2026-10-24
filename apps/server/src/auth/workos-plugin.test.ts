@@ -42,6 +42,7 @@ function prodCfg(overrides: NodeJS.ProcessEnv = {}) {
     METRICS_TOKEN: 'secret',
     PUBLIC_URL: 'https://spillway.cloud', // M4-auth: required + https in prod (drives cookie Secure)
     WORKOS_COOKIE_PASSWORD: 'c'.repeat(32), // M4-auth: required in prod
+    WORKOS_JWT_AUD: 'client_prod', // required in prod (audience pinning)
     ...overrides,
   });
 }
@@ -124,11 +125,14 @@ describe('M25 — mirrorUser fire-and-forget (auth must not fail on DB write err
 // ── L29: WORKOS_JWT_AUD startup warning ────────────────────────────────────────
 
 describe('L29 — WORKOS_JWT_AUD startup warning', () => {
+  // The env schema now REJECTS a production boot without WORKOS_JWT_AUD (config.test.ts covers
+  // that), so this config is hand-built rather than parsed: the warning is the second line of
+  // defense, for a Config assembled in code rather than read from the environment.
   it('emits a console.warn in production when WORKOS_JWT_AUD is unset', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const db = makeDb(false);
     makeAuthHook({
-      config: prodCfg({ WORKOS_CLIENT_ID: 'client_prod' /* no WORKOS_JWT_AUD */ }),
+      config: { ...prodCfg(), WORKOS_CLIENT_ID: 'client_prod', WORKOS_JWT_AUD: undefined },
       db,
       jwks,
       verifyOpts: VERIFY_OPTS,

@@ -89,7 +89,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await h.adminSql`TRUNCATE approval_requests, approval_steps, approval_decisions, approval_policies,
-    workflow_timers, audit_log, budgets, org_members, users CASCADE`;
+    approver_delegations, workflow_timers, audit_log, budgets, org_members, users CASCADE`;
   await h.adminSql`INSERT INTO users (id, email) VALUES
     ('u_req', 'req@t.dev'), ('u_a', 'a@t.dev'), ('u_b', 'b@t.dev'), ('u_view', 'v@t.dev')
     ON CONFLICT (id) DO NOTHING`;
@@ -335,5 +335,92 @@ describe('approvals — M37 reminder/escalation timers are armed', () => {
     expect(esc).toHaveLength(1);
     // escalation.to resolves admins (u_a, u_b) minus the requester → both present.
     expect(esc[0]!.payload.add_ids.sort()).toEqual(['u_a', 'u_b']);
+  });
+});
+
+describe('approvals — F2 delegation substitution against the real driver', () => {
+  /**
+   * Red-team F2. Delegation was covered ONLY by a pure unit test that hands `resolveDelegate` real
+   * `Date` objects, and chain creation was covered only with an EMPTY delegations table — so the
+   * two features were never exercised together and the gap between them was invisible.
+   *
+   * The gap: materializeChain reads `approver_delegations` through a raw `tx.execute`, and
+   * postgres-js hands raw results back unparsed, so `starts_at` arrives as the STRING
+   * '2026-08-09 01:32:59.471707+00'. The row type declared `Date`, the `as unknown as` cast made
+   * TypeScript believe it, and `.getTime()` threw a TypeError. One active delegation row therefore
+   * broke ALL approval creation with a 500 — org-wide, for a feature the delegated user never
+   * touched. Fails closed, but a headline governance feature is inoperative.
+   *
+   * Seeding a delegation and materializing a chain is the whole repro: this test throws
+   * "d.starts_at.getTime is not a function" against the pre-fix delegate.ts.
+   */
+  async function seedDelegation(from: string, to: string, startsAt: string, endsAt: string) {
+    await h.adminSql`INSERT INTO approver_delegations (org_id, from_user, to_user, starts_at, ends_at)
+      VALUES (${orgId}, ${from}, ${to}, ${startsAt}::timestamptz, ${endsAt}::timestamptz)`;
+  }
+
+  it('an ACTIVE delegation substitutes the delegate instead of 500ing chain creation', async () => {
+    await seedDelegation('u_a', 'u_b', '2020-01-01T00:00:00Z', '2999-01-01T00:00:00Z');
+    const pol = await seedPolicy({
+      tiers: [
+        { min_amount_usd: '0', steps: [{ approvers: { user_ids: ['u_a'] }, quorum: 'any' }] },
+      ],
+    });
+    const { id } = await openApproval({
+      policy: pol,
+      requestedBy: 'u_req',
+      requestedValue: { new_limit_usd: '1000.000000' },
+    });
+    const steps = await h.adminSql<{ required_approver_ids: string[] }[]>`
+      SELECT required_approver_ids FROM approval_steps WHERE approval_id = ${id}`;
+    expect(steps).toHaveLength(1);
+    // u_a delegated to u_b, so the frozen step names u_b — proving the string timestamps were
+    // compared, not merely tolerated.
+    expect(steps[0]!.required_approver_ids).toEqual(['u_b']);
+    // And the substitution is real end to end: the delegate can actually decide.
+    expect(await handlers.approveRequest(orgId, id, 'u_b', 'admin')).toBe('approved');
+  });
+
+  it('a delegation OUTSIDE its window is ignored, not applied', async () => {
+    await seedDelegation('u_a', 'u_b', '2020-01-01T00:00:00Z', '2020-06-01T00:00:00Z');
+    const pol = await seedPolicy({
+      tiers: [
+        { min_amount_usd: '0', steps: [{ approvers: { user_ids: ['u_a'] }, quorum: 'any' }] },
+      ],
+    });
+    const { id } = await openApproval({
+      policy: pol,
+      requestedBy: 'u_req',
+      requestedValue: { new_limit_usd: '1000.000000' },
+    });
+    const steps = await h.adminSql<{ required_approver_ids: string[] }[]>`
+      SELECT required_approver_ids FROM approval_steps WHERE approval_id = ${id}`;
+    // Note what this does and does not prove: materialize.ts's SELECT already filters the window
+    // server-side, so an expired delegation never reaches delegate.ts at all — which is exactly why
+    // this case passed even BEFORE the fix, while the active-window case above threw. It is pinned
+    // because the in-code window check is a redundant second gate that must agree with the SQL one,
+    // not because it demonstrates the coercion.
+    expect(steps[0]!.required_approver_ids).toEqual(['u_a']);
+  });
+
+  it('a CHAINED delegation (A→B→C) resolves to the terminus across the driver boundary', async () => {
+    await h.adminSql`INSERT INTO users (id, email) VALUES ('u_c', 'c@t.dev')
+      ON CONFLICT (id) DO NOTHING`;
+    await h.adminSql`INSERT INTO org_members (org_id, user_id, role) VALUES (${orgId}, 'u_c', 'admin')`;
+    await seedDelegation('u_a', 'u_b', '2020-01-01T00:00:00Z', '2999-01-01T00:00:00Z');
+    await seedDelegation('u_b', 'u_c', '2020-01-01T00:00:00Z', '2999-01-01T00:00:00Z');
+    const pol = await seedPolicy({
+      tiers: [
+        { min_amount_usd: '0', steps: [{ approvers: { user_ids: ['u_a'] }, quorum: 'any' }] },
+      ],
+    });
+    const { id } = await openApproval({
+      policy: pol,
+      requestedBy: 'u_req',
+      requestedValue: { new_limit_usd: '1000.000000' },
+    });
+    const steps = await h.adminSql<{ required_approver_ids: string[] }[]>`
+      SELECT required_approver_ids FROM approval_steps WHERE approval_id = ${id}`;
+    expect(steps[0]!.required_approver_ids).toEqual(['u_c']);
   });
 });

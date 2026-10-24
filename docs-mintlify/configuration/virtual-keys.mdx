@@ -23,7 +23,7 @@ Add a provider key once per provider your org uses. All governed traffic to that
 routes through it.
 
 ```jsonc
-// POST /api/provider-keys   (session or admin-key auth)
+// POST /api/provider-keys   (session auth)
 {
   "provider": "openai",
   "label": "prod-openai",
@@ -32,7 +32,7 @@ routes through it.
 ```
 
 `apiKey` is write-only — it's encrypted on write and never echoed back by `GET
-/api/provider-keys`. A custom `base_url` isn't accepted yet; custom upstreams go through the
+/api/provider-keys`. A custom `baseUrl` isn't accepted yet; custom upstreams go through the
 OpenAI-compatible adapter instead.
 
 ## Virtual keys

@@ -47,7 +47,7 @@ export type SpillwayErrorCode =
   // governance data plane (M3 Part II)
   | 'no_route_available' // ADR-042: hard-filter left no dispatchable candidate (503, fail-closed)
   | 'approval_required' // ADR-034/16 §3.4: a require_approval guardrail matched (403 + approval opened)
-  | 'all_providers_failed' // 15 §7: every candidate in the chain failed (502)
+  // ('all_providers_failed' — 15 §7, every candidate failed (502) — already declared in the M0 block above)
   // governance control plane (M3 Part II CRUD — B6)
   | 'tier_required' // ADR-039/018: the org's plan lacks the entitlement for this feature (402)
   | 'plan_upgrade_required' // alias of tier_required for quota/limit gates (402)
@@ -65,7 +65,33 @@ export type SpillwayErrorCode =
   | 'invalid_action_token' // 18 §6: a tampered / expired / wrong-secret signed action token (401)
   | 'threshold_condition_not_isolated'; // 19: an anomaly alert threshold not isolated (422)
 
-const DOCS_BASE = 'https://docs.spillway.dev/errors';
+/**
+ * Hosted docs errors reference (Mintlify). There is no per-code page — codes are rows in a table
+ * on this one page, grouped by category — so `docsUrl` below points here with the code as a URL
+ * fragment. No anchor matches it today (Mintlify tables don't emit per-row ids), so the fragment
+ * is inert rather than load-bearing; it's cheap-to-fix if per-code anchors ever ship, and it beats
+ * a bare link that reads as if the reader is meant to already know which section to search.
+ *
+ * Overridable so the docs host isn't re-hardcoded while it's still in flux (config.ts SPILLWAY_DOCS_URL,
+ * wired via setErrorsDocsUrl at boot in app.ts). This was previously `spillway.cloud/docs/errors/<code>`,
+ * which 404'd for all 44 codes — the apex domain serves the landing page, not docs.
+ */
+export const DEFAULT_ERRORS_DOCS_URL = 'https://spillway.mintlify.site/api-reference/errors';
+
+let errorsDocsUrl: string = DEFAULT_ERRORS_DOCS_URL;
+
+/**
+ * Override where `SpillwayError#docsUrl` points. Call once at boot, before serving requests.
+ *
+ * PROCESS-GLOBAL, last-write-wins. `docsUrl` is read at construction time, so building a second
+ * app with a different `SPILLWAY_DOCS_URL` in the same process changes what the first one's
+ * subsequent errors emit. That is fine for the one-app-per-process deployment and is why this is a
+ * module singleton rather than config threaded through 155 `new SpillwayError` call sites — but a
+ * test that builds two differently-configured apps and asserts on both must reset between them.
+ */
+export function setErrorsDocsUrl(url: string): void {
+  errorsDocsUrl = url;
+}
 
 export interface SpillwayErrorOptions {
   /** HTTP status to return (e.g. 402 for budget_exceeded). */
@@ -90,7 +116,7 @@ export class SpillwayError extends Error {
     this.code = code;
     this.httpStatus = opts.httpStatus;
     this.details = opts.details;
-    this.docsUrl = `${DOCS_BASE}/${code}`;
+    this.docsUrl = `${errorsDocsUrl}#${code}`;
   }
 }
 
@@ -174,14 +200,14 @@ export interface BlockBody {
   };
 }
 
-export function blockBody(err: SpillwayError, spillway: Record<string, unknown> = {}): BlockBody {
+export function blockBody(err: SpillwayError, extra: Record<string, unknown> = {}): BlockBody {
   return {
     error: {
       message: err.message,
       type: 'spillway_error',
       code: err.code,
       param: null,
-      spillway: { block_reason: err.code, ...spillway },
+      spillway: { block_reason: err.code, ...extra },
     },
   };
 }

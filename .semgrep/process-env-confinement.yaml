@@ -1,0 +1,99 @@
+## Every process.env read in apps/server should go through loadConfig() (config.ts) so
+## there is exactly one place that knows the full set of env vars the server depends on,
+## validates them at boot, and fails loudly on load. Direct process.env reads scattered
+## through the codebase are invisible to that inventory and to the boot-time validation.
+##
+## The excludes below are pre-existing, individually reviewed violators — standalone CLI
+## entrypoints that run outside/before the Fastify app (and so can't reach loadConfig's
+## Config object), plus two call sites that read a narrowly-scoped var directly. Each is
+## dated and reasoned; new files should NOT be added here without the same review — the
+## fix for a new call site is almost always "add it to Config in config.ts", not "add an
+## exclude".
+
+rules:
+  - id: process-env-outside-config
+    languages: [typescript]
+    severity: ERROR
+    message: >
+      process.env read outside config.ts. Every env var the server depends on should be
+      declared in the Config schema (config.ts) and threaded through via loadConfig(), so
+      there is one validated inventory and boot fails loudly on a bad/missing value. If
+      this call site genuinely can't reach Config (e.g. a standalone CLI entrypoint that
+      runs before the app boots), get the exclusion reviewed and added to
+      .semgrep/process-env-confinement.yaml with a dated reason.
+    patterns:
+      - pattern-either:
+          - pattern: process.env
+          # `import { env } from 'node:process'` walks straight past a bare `process.env`
+          # pattern, and this repo already uses node:-prefixed imports 20 times (node:crypto,
+          # node:path, node:fs, node:dns, node:async_hooks) with no lint rule against it — so it
+          # is house style, not obfuscation. Red-team H4, 2026-08-08.
+          #
+          # The unaliased `import { env } from 'node:process'` form (the exact one the comment
+          # above names) was still missed — the pattern below only matched an explicit `as $E`
+          # alias. Red-team F4, 2026-08-08: confirmed by mutation, a scratch file using the
+          # plain unaliased import produced zero findings until this branch was added.
+          #
+          # `pattern-inside: import { env } from 'node:process'` alone is not enough: semgrep
+          # matches that import pattern loosely against an ALIASED import too (`env as
+          # processEnv` still satisfies it, binding nothing to the alias), which would flag any
+          # unrelated local variable named `env` in a file that only ever imports the aliased
+          # form. Confirmed by mutation. `pattern-not-inside` on the explicit `as $X` form
+          # excludes that case — `import { env as $X }` does NOT loosely match a bare
+          # `import { env }`, so it only fires on genuine aliased imports.
+          - patterns:
+              - pattern: env
+              - pattern-inside: |
+                  import { env } from 'node:process'
+                  ...
+              - pattern-not-inside: |
+                  import { env as $X } from 'node:process'
+                  ...
+          - patterns:
+              - pattern: $E
+              - pattern-inside: |
+                  import { env as $E } from 'node:process'
+                  ...
+          - patterns:
+              - pattern: $P.env
+              - pattern-inside: |
+                  import * as $P from 'node:process'
+                  ...
+          - pattern: process['env']
+          - pattern: process["env"]
+    paths:
+      include:
+        - '**/apps/server/src'
+      exclude:
+        - '**/apps/server/src/config.ts'
+        - '**/*.test.ts'
+        - '**/apps/server/test'
+        # accepted 2026-08-08: standalone migration CLI (runMigrations) — invoked via
+        # `pnpm db:migrate` / tsx directly, before any Fastify app or Config object exists;
+        # needs DATABASE_URL/DATABASE_URL_JOBS/MIGRATION_DATABASE_URL to pick its target.
+        - '**/apps/server/src/db/migrate.ts'
+        # accepted 2026-08-08: standalone registry-sync CLI (main()) — same shape as
+        # migrate.ts, run directly via tsx outside the app process.
+        - '**/apps/server/src/db/registry-sync.ts'
+        # accepted 2026-08-08: standalone pricing-sync CLI (main(), `pnpm pricing:sync`) —
+        # same shape, connects to its own DB URL before any app/Config exists.
+        - '**/apps/server/src/db/pricing-sync.ts'
+        # accepted 2026-08-08: AUTH_RATE_SESSION/AUTH_RATE_LOGIN read directly in
+        # loadAuthRateConfig() — auth-rate-limit sits deliberately outside the config-gated
+        # app wiring (10-security §5.4) so a logged-out client can still reach /auth/*.
+        - '**/apps/server/src/auth/auth-rate-limit.ts'
+        # accepted 2026-08-08: CONTROL_PLANE_RATE_* read directly in loadRateConfig() —
+        # same rationale as auth-rate-limit.ts, this limiter boots ahead of/independent of
+        # the Config object.
+        - '**/apps/server/src/control-plane/rate-limit.ts'
+        # accepted 2026-08-08: standalone certifier-smoke CLI (main()/runSmoke) — reads
+        # CERTIFIER_SPEND_CAP_USD, per-provider *_API_KEY, and its own DB URL directly; runs
+        # as an out-of-band smoke job, not inside the request-serving app.
+        - '**/apps/server/src/jobs/certifier-smoke.ts'
+        # accepted 2026-08-08: TRUST_PROXY_HOPS read once at module load to build the
+        # Fastify `trustProxy` hop count (security-critical XFF trust boundary; see the
+        # block comment above it in app.ts) — computed before/independent of Config wiring.
+        - '**/apps/server/src/app.ts'
+        # accepted 2026-08-08: NODE_ENV read to decide whether to cache the static HTML
+        # document at boot (immutable in the prod image) vs re-read per request in dev.
+        - '**/apps/server/src/static.ts'

@@ -8,6 +8,10 @@ import type { RouteResult, SpendSnapshot } from '../routing/resolve.js';
 import type { ConditionEvaluator } from '../policy/condition-evaluator.js';
 import type { ConditionRunner } from '../policy/guardrails.js';
 import type { GuardrailAnnotation } from '../policy/guardrail-types.js';
+import {
+  PERMISSIVE_CANDIDATE_GUARDRAIL,
+  type CandidateGuardrail,
+} from '../policy/model-guardrails.js';
 import type { ProviderHealthStore, HealthSnapshot } from '../health/store.js';
 import type { SessionPinStore } from '../routing/session-pin.js';
 import type { BurstTracker } from '../../services/alerts/burst.js';
@@ -130,6 +134,13 @@ export interface PipelineContext {
   // re-apply it so a substituted alias can't bypass either gate (red-team part-3 #1). Set unconditionally
   // by ROUTE before BUDGET runs.
   candidateAdmissible: (c: Candidate) => boolean;
+  // PASS-2 model-scoped guardrail gate, built by ROUTE once the chain is resolved (red-team P0:
+  // PASS-1 judged the model the CLIENT ASKED FOR, which routing is then free to rewrite). ROUTE
+  // filters the chain + typed variants through it and 403s if that empties; DISPATCH re-checks each
+  // candidate before dispatching it, which is what covers chains substituted AFTER route (BUDGET's
+  // on_exceed fallback alias). Defaults to the permissive gate so a context that never reached ROUTE
+  // is still structurally valid — every dispatch path runs ROUTE, which replaces it.
+  candidateGuardrail: CandidateGuardrail;
   // Snapshotted before dispatch. Missing/partial pricing must never become $0 spend.
   priceByCandidate: ReadonlyMap<string, ModelPriceRow>;
   candidate: Candidate; // set by ROUTE (= candidateChain[0]); the dispatch executor advances it
@@ -193,6 +204,7 @@ export function buildPipelineContext(
     routeResult: undefined as unknown as RouteResult,
     candidateChain: [],
     candidateAdmissible: undefined as unknown as (c: Candidate) => boolean, // set by ROUTE before BUDGET reads it
+    candidateGuardrail: PERMISSIVE_CANDIDATE_GUARDRAIL, // replaced by ROUTE
     priceByCandidate: new Map(),
     candidate: undefined as unknown as Candidate,
     activeCandidate: undefined as unknown as Candidate,

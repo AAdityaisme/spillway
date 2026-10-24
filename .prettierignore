@@ -1,5 +1,8 @@
 # Founder creative direction — preserved verbatim (ADR-019j)
 apps/landing/
+# docs/design/ is UNTRACKED (gitignored, local-only) but still sits in a working tree, so
+# `prettier --check .` would walk it. Keep this entry: the ignore is what stops a local-only
+# design doc from failing the lint gate for everyone.
 docs/design/
 
 # Generated / vendored
@@ -11,3 +14,8 @@ apps/docs/reference/
 docs/bible/
 docs/research/
 pnpm-lock.yaml
+
+# Mintlify docs site — authored MDX prose with Mintlify components. Prettier reformats these into
+# large, meaningless diffs and its MDX printer mangles component attribute wrapping. Reviewing the
+# prose is the quality gate here, not a formatter. (Red CI 2026-08-07: 15 unformatted .mdx files.)
+docs-mintlify/

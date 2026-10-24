@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import type { Dispatcher } from 'undici';
 import { and, eq, sql } from 'drizzle-orm';
 import { SpillwayError, createAlertSchema, updateAlertSchema } from '@spillway/shared';
 import type { DatabaseClient } from '../../db/client.js';
@@ -6,11 +7,11 @@ import { alerts, orgs } from '../../db/schema.js';
 import { orgContext } from '../../org-context.js';
 import { withOrg } from '../../db/tenancy.js';
 import { requireRole } from '../../auth/rbac.js';
-import { assertSafeBaseUrl } from '../../auth/ssrf.js';
 import {
   parseChannels,
   deliverTestFire,
   makeHttpChannelSink,
+  assertSafeChannel,
   type ChannelSink,
 } from '../../services/alerts/delivery.js';
 import { resolveEntitlements } from '../../auth/entitlements.js';
@@ -22,6 +23,12 @@ export interface AlertsDeps {
   db: DatabaseClient;
   /** §5.6 test-fire channel sink (test seam). Defaults to the production HTTP router over global fetch. */
   channelSink?: ChannelSink;
+  /**
+   * Test seam: undici dispatcher for the default sink's outbound HTTP. The sink now sends through
+   * the SSRF-guarded dispatcher, and passing an explicit dispatcher bypasses setGlobalDispatcher —
+   * so a test's MockAgent has to arrive this way rather than globally.
+   */
+  dispatcher?: Dispatcher;
 }
 
 const publicCols = {
@@ -44,7 +51,7 @@ const publicCols = {
  */
 export const alertsRoutes: FastifyPluginAsync<AlertsDeps> = async (
   fastify,
-  { db, channelSink },
+  { db, channelSink, dispatcher },
 ) => {
   // Default to the production HTTP channel router (Slack + HMAC webhook out of the box; email needs a
   // Resend sender wired, same as the delivery job). Injectable so tests drive a recording sink.
@@ -55,6 +62,7 @@ export const alertsRoutes: FastifyPluginAsync<AlertsDeps> = async (
         url: string,
         init: Record<string, unknown>,
       ) => Promise<{ ok: boolean; status: number }>,
+      dispatcher,
     });
 
   async function requireAlerts(orgId: string): Promise<void> {
@@ -79,13 +87,13 @@ export const alertsRoutes: FastifyPluginAsync<AlertsDeps> = async (
     return { alerts: rows };
   });
 
-  // §5.1: every channel webhook/URL is SSRF-validated on write (HTTPS-only, public IPs, no redirects) so
-  // a delivery target can never be pointed at an internal service.
+  // §5.1: every channel webhook/URL is SSRF-validated on write (HTTPS-only, public IPs, no redirects).
+  // This is a write-time convenience check only — it gives the operator immediate 422 feedback on an
+  // obviously-bad URL. It is NOT the enforcement boundary: delivery.ts re-runs the identical check
+  // (assertSafeChannel) immediately before every send, because a target validated here can still
+  // change, or be DNS-rebound, before the alert actually fires (F1 red-team round 2).
   function validateChannelUrls(channels: unknown): void {
-    for (const ch of parseChannels(channels)) {
-      if (ch.type === 'slack') assertSafeBaseUrl(ch.webhook_url);
-      else if (ch.type === 'webhook') assertSafeBaseUrl(ch.url);
-    }
+    for (const ch of parseChannels(channels)) assertSafeChannel(ch);
   }
 
   fastify.post('/alerts', async (request, reply) => {

@@ -55,8 +55,8 @@ stage a plain function over a shared `PipelineContext`:
   </Step>
   <Step title="Guardrails">
     Evaluate matching guardrail policies (`/api/policies`). A policy can `deny` the request
-    outright, `flag` it for visibility, or `require_approval` and open an approval request
-    instead of failing.
+    outright or `flag` it for visibility. (A third effect, `require_approval`, is defined but
+    not yet available — see [Guardrails](/configuration/guardrails).)
   </Step>
   <Step title="Budget check">
     Check every budget scope the request falls under (virtual key, team, org, provider). A
@@ -103,10 +103,10 @@ These are separate resources with separate CRUD endpoints under `/api/*` — see
 | Resource | What it controls |
 | --- | --- |
 | **Budgets** | A spend cap on a scope (org / team / virtual key / provider) over a period, with `enforce`/`alert`/`monitor` modes. |
-| **Guardrail policies** | Match-and-effect rules (`deny` / `require_approval` / `flag`) evaluated on every request. |
+| **Guardrail policies** | Match-and-effect rules (`deny` / `flag`) evaluated on every request. `require_approval` is defined but not yet available. |
 | **Routing rules** | Model rewrite and fallback-chain logic, evaluated per request before dispatch. |
 | **Aliases** | Named model targets that can point at one model or a weighted/fallback set. |
-| **Approval policies** | Tiered, multi-step approval chains that a guardrail's `require_approval` effect opens against. |
+| **Approval policies** | Tiered, multi-step approval chains. Opened today by human requests (budget increase, key unpause) and by an automation rule's `require_approval` effect. The one trigger not yet available is the *guardrail* effect of the same name. |
 | **Automation rules** | Triggers (alert fired, approval decided, key created, budget crossed, on a cron) wired to effects. |
 
 ## Data layer
@@ -134,8 +134,9 @@ role.
 - **Humans** (dashboard) authenticate via **WorkOS AuthKit** — a session JWT verified
   against WorkOS's JWKS.
 - **Machines** authenticate the data plane with a **virtual key** (`mk-live-…`) and the
-  control plane with either a session token or an **admin key** (`mka-…`) plus an
-  `X-Spillway-Org` header.
+  control plane with either a session token or an **admin key** (`mk-admin-…`) plus an
+  `X-Spillway-Org` header — though admin-key auth isn't wired up yet; see the
+  [API reference](/api-reference/introduction) for current status.
 
 ## Where next
 

@@ -1,5 +1,6 @@
 import { SpillwayError } from '@spillway/shared';
 import { getRateLimiter } from '../ratelimit/limiter.js';
+import { recordBlock, recordRequestCompletion } from '../../observability/metrics.js';
 import type { PipelineContext } from './context.js';
 
 /**
@@ -19,18 +20,27 @@ export function runRateLimit(ctx: PipelineContext, now: number = Date.now()): vo
   const { rpmLimit, tpmLimit, maxParallel, virtualKeyId } = ctx.policy;
   const rl = getRateLimiter();
 
+  // blocks_total{rate_limited} + requests_total{rate_limited} (§6.3), recorded on the block decision.
+  // Rate limits are per-virtual-key (§4) → scope_type is always 'virtual_key'; no candidate was
+  // served → provider/model 'unknown'. One funnel for all three dimensions (rpm/tpm/parallel).
+  const blockRateLimited = (retryAfterSec: number, dimension: string): SpillwayError => {
+    recordBlock('rate_limited', 'virtual_key');
+    recordRequestCompletion('rate_limited', null, null, ctx.endpoint);
+    return rateLimited(retryAfterSec, dimension);
+  };
+
   if (rpmLimit !== null) {
     const r = rl.consume(`rpm:${virtualKeyId}`, rpmLimit, 1, now);
-    if (!r.ok) throw rateLimited(r.retryAfterSec, 'rpm');
+    if (!r.ok) throw blockRateLimited(r.retryAfterSec, 'rpm');
   }
   if (tpmLimit !== null) {
     const cost = Math.max(1, ctx.estimatedInputTokens);
     const r = rl.consume(`tpm:${virtualKeyId}`, tpmLimit, cost, now);
-    if (!r.ok) throw rateLimited(r.retryAfterSec, 'tpm');
+    if (!r.ok) throw blockRateLimited(r.retryAfterSec, 'tpm');
   }
   // Parallel gauge last — bounded, no overshoot; released in the route finally.
   if (!rl.acquireParallel(`par:${virtualKeyId}`, maxParallel)) {
-    throw rateLimited(1, 'parallel');
+    throw blockRateLimited(1, 'parallel');
   }
   ctx.parallelAcquired = true;
 }

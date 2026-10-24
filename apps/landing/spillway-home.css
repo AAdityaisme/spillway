@@ -543,6 +543,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .footer ul { list-style: none; }
 .footer ul li a { font-size: 17px; line-height: 2.41; color: var(--ink-80); transition: color .15s; }
 .footer ul li a:hover { color: var(--primary); }
+/* Footer entries whose page does not exist yet (Status, Privacy, Terms, …) carry no href, so they
+   are correctly not links to a screen reader — but they still inherited the hover colour above and
+   so still LOOKED clickable while doing nothing. Dim them and drop the hover: a footer that
+   promises a Privacy policy and delivers nothing is the thing being avoided. Give them an href and
+   they style as normal links again automatically. */
+.footer ul li a:not([href]) { color: var(--ink-48); cursor: default; }
+.footer ul li a:not([href]):hover { color: var(--ink-48); }
 .footer-legal {
   margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--hairline);
   display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;

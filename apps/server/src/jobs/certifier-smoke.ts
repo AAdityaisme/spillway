@@ -104,9 +104,47 @@ async function probe(
   }
 }
 
+/**
+ * Resolve the per-run spend cap from the env, falling back to the default on anything malformed.
+ *
+ * Two traps this exists to avoid, both of which have bitten:
+ *  - A bare `Number()` on an unvalidated env string yields NaN for a typo, and `spent > NaN` is
+ *    ALWAYS false — so a fat-fingered cap silently DISABLES the runaway-spend guard instead of
+ *    failing loudly. Shape-check first.
+ *  - The "is it malformed" test must key off the shape check, not off comparing the parsed number
+ *    back to its own string. nightly.yml supplies '0.10', which is perfectly valid and parses to
+ *    0.1 — but `String(0.1)` is '0.1', so a round-trip comparison flags every good nightly run as
+ *    malformed. (Greptile, PR #11.)
+ */
+export function resolveSpendCapUsd(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_SPEND_CAP_USD;
+  if (!/^\d{1,8}(\.\d{1,6})?$/.test(raw)) {
+    // Log NOTHING derived from the value — not the value, not its length. "Log the bad input so the
+    // operator can see it" is a standard route for a secret into a log file: this reads an arbitrary
+    // env var, and the day someone pastes a key where a number belongs the echo persists it.
+    //
+    // The first attempt at this logged `raw.length` instead of `raw`, reasoning that a length cannot
+    // disclose a secret. CodeQL disagreed and was right to: taint propagates through `.length`, so
+    // the finding stood. It is also the correct call on the merits — a length leaks how long the
+    // secret is, and the var NAME plus the expected FORMAT is already everything an operator needs
+    // to fix their config. They can read their own value; the log does not need to hold it.
+    console.warn(
+      `certifier-smoke: CERTIFIER_SPEND_CAP_USD is malformed (expected a plain decimal, e.g. "0.10"); using $${DEFAULT_SPEND_CAP_USD}`,
+    );
+    return DEFAULT_SPEND_CAP_USD;
+  }
+  // nosemgrep: money-no-number-coercion -- shape-validated decimal config read, not a ledger value;
+  // planWithinBudget rounds it to integer µUSD before any accumulation happens.
+  return Number(raw);
+}
+
 export async function runSmoke(db: DatabaseClient): Promise<{ runId: string; written: number }> {
   const runId = randomUUID();
-  const capUsd = Number(process.env.CERTIFIER_SPEND_CAP_USD ?? DEFAULT_SPEND_CAP_USD);
+  // Validate the shape before trusting it as a spend cap. `Number()` on an unvalidated env string
+  // yields NaN for a typo, and `spent > NaN` is ALWAYS false — a fat-fingered cap would silently
+  // disable the runaway-spend guard entirely rather than failing loudly. Fall back to the default
+  // on anything that is not a plain decimal.
+  const capUsd = resolveSpendCapUsd(process.env.CERTIFIER_SPEND_CAP_USD);
   let written = 0;
 
   for (const p of PROBES) {

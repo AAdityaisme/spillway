@@ -205,7 +205,7 @@ export const requestsRoutes: FastifyPluginAsync<RequestsDeps> = async (fastify, 
           })
           .from(requests)
           .leftJoin(routingRules, eq(routingRules.id, requests.routingRuleId))
-          .where(and(eq(requests.id, request.params.id), scope))
+          .where(and(eq(requests.id, request.params.id), eq(requests.orgId, orgId), scope))
           .limit(1);
         return r;
       });

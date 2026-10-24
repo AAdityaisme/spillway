@@ -66,6 +66,20 @@ describe('assertSafeBaseUrl', () => {
     expect(() => assertSafeBaseUrl('https://%31%32%37%2e%30%2e%30%2e%31')).toThrow(); // → 127.0.0.1
   });
 
+  // F1 red-team round 2: `new URL('https://localhost./hook').hostname === 'localhost.'` matched
+  // neither `host === 'localhost'` nor `host.endsWith('.localhost')` — a bare FQCN-root-dot bypass.
+  it('rejects the trailing-dot FQDN bypass (localhost. / metadata host. / uppercase + dot)', () => {
+    for (const h of [
+      'https://localhost./hook',
+      'https://LOCALHOST./hook',
+      'https://localhost../hook',
+      'https://metadata.google.internal./x',
+      'https://foo.internal./x',
+    ]) {
+      expect(() => assertSafeBaseUrl(h), h).toThrow();
+    }
+  });
+
   it('rejects the newly-covered reserved ranges (CGNAT, TEST-NET, 6to4, NAT64)', () => {
     for (const h of [
       '100.64.0.1',

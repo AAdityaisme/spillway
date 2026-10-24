@@ -15,7 +15,7 @@ import { requireRole } from '../../auth/rbac.js';
 import { resolveEntitlements } from '../../auth/entitlements.js';
 import { appendAudit } from '../../services/audit.js';
 import { BufbuildConditionEvaluator } from '../../data-plane/policy/condition-evaluator.js';
-import { CelCompileError } from '../../data-plane/policy/bounds.js';
+import { CelCompileError, MAX_POLICIES_PER_ORG } from '../../data-plane/policy/bounds.js';
 import { lintConfig } from '../../data-plane/policy/lint.js';
 import type { MatchSpec } from '../../data-plane/policy/guardrail-types.js';
 import { parse } from '../validate.js';
@@ -218,6 +218,25 @@ export const policiesRoutes: FastifyPluginAsync<PoliciesDeps> = async (fastify, 
     let created;
     try {
       created = await withOrg(db, orgId, async (tx) => {
+        // Red-team P0: guardrail evaluation (data-plane/policy/guardrails.ts) is intentionally
+        // exhaustive — no short-circuit — so N unbounded policies means N-times the per-request CPU,
+        // a self-inflicted DoS that degrades every other tenant. Cap N here, at the only place it can
+        // grow. Advisory-locked (own lock space, keyed off orgId — see MAX_ORGS_PER_USER in orgs.ts
+        // for the identical TOCTOU this guards against) so concurrent POSTs can't all read
+        // count < MAX_POLICIES_PER_ORG before any of them commits an insert.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext('spillway:policy:create'), hashtext(${orgId}))`,
+        );
+        const [countRow] = (await tx.execute(
+          sql`select count(*)::int as n from governance_policies where org_id = ${orgId}`,
+        )) as unknown as { n: number }[];
+        if ((countRow?.n ?? 0) >= MAX_POLICIES_PER_ORG) {
+          throw new SpillwayError(
+            'validation_error',
+            `exceeded the maximum of ${MAX_POLICIES_PER_ORG} guardrail policies per org`,
+            { httpStatus: 429, details: { limit: MAX_POLICIES_PER_ORG } },
+          );
+        }
         const [row] = await tx
           .insert(governancePolicies)
           .values({

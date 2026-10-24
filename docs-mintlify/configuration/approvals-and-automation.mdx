@@ -1,19 +1,32 @@
 ---
 title: "Approvals & automation"
-description: "Tiered approval chains for guardrail-gated requests, and rules that react to events."
+description: "Tiered approval chains for changes that need sign-off, and rules that react to events."
 ---
 
 ## Approval policies
 
-An approval policy defines the chain a `require_approval` guardrail effect opens against —
-tiers by dollar amount, each with one or more sequential steps, each step with its own
-approver set and quorum.
+An approval policy defines a tiered, multi-step chain of approvers for a request that needs
+human sign-off — tiers by dollar amount, each with one or more sequential steps, each step
+with its own approver set and quorum.
+
+<Note>
+  Two things share the name `require_approval`, and only one of them is unavailable.
+
+  Chains open today from two directions. A person requests one through [`POST
+  /api/approvals`](/api-reference/introduction), which accepts `budget_increase` and
+  `key_unpause`. An **automation rule** opens one through its `require_approval` effect,
+  setting the `kind` itself — that effect works and is exercised end to end.
+
+  What is not available is the *guardrail* effect of the same name, which would open a chain
+  when a policy matches a live request. Authoring that policy returns `422`; see
+  [Guardrails](/configuration/guardrails) for why.
+</Note>
 
 ```jsonc
 // POST /api/approval-policies
 {
   "name": "spend-over-500",
-  "kind": "budget_override",
+  "kind": "budget_increase",
   "definition": {
     "tiers": [
       {
@@ -38,6 +51,9 @@ approver set and quorum.
 }
 ```
 
+- **`kind`** must match the kind of the request the policy should cover — `budget_increase`
+  or `key_unpause` today. An approval request is matched to a policy by `kind` (plus scope),
+  so a policy whose `kind` doesn't match one of those two never fires.
 - **Tiers** are matched by amount — the request's dollar value picks which tier's steps
   apply. A tier can set `auto_approve: true` to skip human approval entirely below its own
   threshold.
@@ -88,7 +104,7 @@ and other reactive behavior are built on.
   "name": "notify-slack-on-budget-cross",
   "priority": 10,
   "triggerType": "budget_crossed",
-  "condition": { "threshold_pct": 90 },
+  "condition": { "pct": 80 },
   "action": { "type": "slack_notify", "channel": "#spend-alerts" },
   "state": "active",
   "stopOnMatch": true,
@@ -99,21 +115,49 @@ and other reactive behavior are built on.
 | Field | Notes |
 | --- | --- |
 | `triggerType` | `alert_fired` \| `approval_decided` \| `key_created` \| `budget_crossed` \| `schedule_cron` |
-| `condition` | Trigger-specific matching criteria (open object — shape depends on `triggerType`). |
+| `condition` | Trigger-specific matching criteria (open object — shape depends on `triggerType`). Two things to get right, because both fail silently rather than erroring. **Field names** must match the event payload exactly: a `budget_crossed` event carries `pct`, so `{ "pct": 80 }` matches and `{ "threshold_pct": 80 }` does not — an unrecognized key is accepted as an ordinary structured field, compared against a payload key that doesn't exist, and the rule never fires. **Values** are compared by strict equality, not as a threshold: budget crossings are only emitted for the **80% and 100% bands**, so `{ "pct": 90 }` is a rule that can never match. There is no "at or above" form for `pct` — the one threshold-style field, `min_ratio`, reads `today_usd`/`baseline_usd`, which only anomaly events carry, so it never matches a `budget_crossed` rule either. |
 | `action` | The effect to run (open object — shape depends on the registered effect handler). |
-| `state` | `active` runs the action; `notify_only` logs a match without running it (a dry-run mode, same idea as a guardrail's `shadow` enforcement); `disabled` skips evaluation entirely. |
+| `state` | `active` runs the action; `notify_only` logs a match without running it (a dry-run mode, same idea as a guardrail's `shadow` enforcement); `disabled` skips evaluation entirely. Defaults to `notify_only` — a new rule doesn't fire until you flip it to `active`. |
 | `stopOnMatch` | Whether matching this rule stops evaluating lower-priority rules for the same event. Defaults `true`. |
 | `rateCapPerHour` | Caps how often this rule's action can actually fire, independent of how often it matches. Defaults `10`. |
-| `scheduleCron` | Required when `triggerType` is `schedule_cron`. |
+| `scheduleCron` | Required when `triggerType` is `schedule_cron`. Only `@every <n>[smh]` is supported (e.g. `@every 15m`) — standard cron syntax is rejected at creation, not silently ignored. |
 
 Rules are evaluated in `priority` order, same as routing rules and guardrails. Reorder them
 with `POST /api/automation-rules/reorder` rather than editing every rule's priority by hand.
+
+### Opening an approval from a rule
+
+`require_approval` is one of the registered effect handlers a rule's `action` can run, and it
+works today — set `action.type` to `require_approval` and give it the same `kind`/scope
+fields a direct approval request takes:
+
+```jsonc
+// POST /api/automation-rules
+{
+  "name": "escalate-large-spend",
+  "triggerType": "budget_crossed",
+  "condition": { "pct": 80 },
+  "action": {
+    "type": "require_approval",
+    "kind": "budget_increase",
+    "scope_type": "team",
+    "scope_id": "<team-uuid>",
+    "amount_usd": "1000"
+  },
+  "state": "active"
+}
+```
+
+This opens a chain against a matching approval policy exactly like a direct
+`POST /api/approvals` call does, just automation-triggered instead of human-initiated. It's
+unrelated to a guardrail policy's `require_approval` effect, which is not available yet — see
+the note above and [Guardrails](/configuration/guardrails).
 
 ## Where next
 
 <CardGroup cols={2}>
   <Card title="Guardrails" icon="shield" href="/configuration/guardrails">
-    What actually opens an approval request.
+    Deny and flag rules on live requests — and why the approval effect isn't available yet.
   </Card>
   <Card title="API reference" icon="code" href="/api-reference/introduction">
     Full field-by-field schemas for every endpoint on this page.

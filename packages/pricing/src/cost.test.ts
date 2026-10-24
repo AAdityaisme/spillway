@@ -47,24 +47,98 @@ describe('computeCost', () => {
     expect(r.unitPrices?.cache_read).toBe('0.250000');
   });
 
-  it('cache read tokens with a NULL cache rate → null cost (fail-closed, not silent $0) — F3', () => {
-    // The adapter subtracted the 5000 cached tokens off the input line to bill them at the cache rate; a
-    // null cache rate must NOT bill them $0 (silent under-metering). Fail closed like every other
-    // dimension: populated-but-unpriced → null cost so reconcile records usage and re-prices later.
+  it('cache read tokens with a NULL cache rate bill at the input-rate CEILING, never $0 — F3', () => {
+    // The adapter subtracted the 5000 cached tokens off the input line to bill them at the cache rate.
+    // A null cache rate must NOT bill them $0 (silent under-metering), and must not void the whole
+    // request either — reconcile coalesced that null straight back to '0'. Cached input is a DISCOUNT
+    // on input, so the input rate is a true upper bound: bill it and flag the substitution.
     const r = computeCost(
       usage({ inputTokens: 1000, cachedReadTokens: 5000, outputTokens: 500 }),
       price({ cacheReadUsdPerM: null }),
     );
-    expect(r.costMicroUsd).toBeNull();
-    expect(r.unitPrices).toBeNull();
+    expect(r.costMicroUsd).toBe(20_000n); // 1000*2.5 + 5000*2.5 (ceiling) + 500*10, /1M
+    expect(r.unpricedDimensions).toEqual(['cache_read']);
+    expect(r.unitPrices?.cache_read).toBe('2.500000'); // the rate actually applied
+    expect(r.unitPrices?.unpriced_dimensions).toBe('cache_read');
   });
 
-  it('cache WRITE tokens with a NULL write rate → null cost (fail-closed) — F3', () => {
+  it('the ceiling is strictly above the real cache line — never under-meters', () => {
+    const u = usage({ inputTokens: 1000, cachedReadTokens: 5000, outputTokens: 500 });
+    const real = computeCost(u, price({ cacheReadUsdPerM: '0.250000' }));
+    const ceiling = computeCost(u, price({ cacheReadUsdPerM: null }));
+    expect(ceiling.costMicroUsd!).toBeGreaterThan(real.costMicroUsd!);
+  });
+
+  // ── F3b: cache-write premium ceiling (read is a discount, write is a premium — not the same bound) ──
+  // NOTE: cache write is a PREMIUM over input (never a discount), so the bare input rate is a FLOOR,
+  // not a ceiling — see cost.ts's WHY comment. An unpriced 5m/1h write must bill at the derived scaled
+  // multiple, not at 1.0x. That correction is exercised in full below.
+  describe('cache-write premium ceiling (F3b, corrects the F3 read/write conflation)', () => {
+    it('unpriced 1h cache-write bills at input × 2.00 (the derived 1h premium), ABOVE bare input', () => {
+      // claude-4-opus-20250514 / claude-4-sonnet-20250514 shape: 5m priced, 1h NOT priced.
+      const r = computeCost(
+        usage({ inputTokens: 1000, cacheWrite1hTokens: 400, outputTokens: 500 }),
+        price({ cacheWrite1hUsdPerM: null }),
+      );
+      // 1000*2.5 + 400*5.0 (2.5 ceiling × 2.00) + 500*10, /1M = 2500+2000+5000
+      expect(r.costMicroUsd).toBe(9500n);
+      expect(r.unpricedDimensions).toEqual(['cache_write_1h']);
+      expect(r.unitPrices?.cache_write_1h).toBe('5.000000');
+      expect(r.unitPrices?.unpriced_dimensions).toBe('cache_write_1h');
+      // Strictly above what the OLD (F3, pre-fix) 1.0x-ceiling behavior would have billed on that line
+      // — 400*2.5=1000n instead of 2000n, for a total of 8500n instead of 9500n. Never regress to that.
+      const oldOneXCeilingTotal = 8500n;
+      expect(r.costMicroUsd).toBeGreaterThan(oldOneXCeilingTotal);
+    });
+
+    it('unpriced 5m cache-write bills at input × 1.25 (the derived 5m premium), ABOVE bare input', () => {
+      const r = computeCost(
+        usage({ inputTokens: 1000, cacheWrite5mTokens: 400, outputTokens: 500 }),
+        price({ cacheWrite5mUsdPerM: null }),
+      );
+      // 1000*2.5 + 400*3.125 (2.5 ceiling × 1.25) + 500*10, /1M = 2500+1250+5000
+      expect(r.costMicroUsd).toBe(8750n);
+      expect(r.unpricedDimensions).toEqual(['cache_write_5m']);
+      expect(r.unitPrices?.cache_write_5m).toBe('3.125000');
+    });
+
+    it('cache READ is unchanged by the write-side fix: still the bare 1.0x input ceiling, not scaled', () => {
+      const r = computeCost(
+        usage({ inputTokens: 1000, cachedReadTokens: 400, outputTokens: 500 }),
+        price({ cacheReadUsdPerM: null }),
+      );
+      // 1000*2.5 + 400*2.5 (1.0x — no premium multiple applied to reads) + 500*10, /1M = 2500+1000+5000
+      expect(r.costMicroUsd).toBe(8500n);
+      expect(r.unitPrices?.cache_read).toBe('2.500000'); // NOT '3.125000' or '5.000000'
+    });
+
+    it('an unpriced 5m cache-write never bills LESS than the same token count at the bare input rate', () => {
+      // 4000 tokens billed purely as input at 2.5/M would be exactly 10000n (4000*2.5). The unpriced
+      // write line for the same 4000 tokens must come out strictly above that pin, never below it —
+      // below it is the exact under-metering direction F3b exists to close.
+      const bareInputEquivalent = computeCost(usage({ inputTokens: 4000 }), price());
+      expect(bareInputEquivalent.costMicroUsd).toBe(10_000n);
+      const write = computeCost(usage({ inputTokens: 0, cacheWrite5mTokens: 4000 }), price());
+      expect(write.costMicroUsd).toBe(12_500n); // 4000 * 3.125 (2.5 × 1.25), /1M
+      expect(write.costMicroUsd!).toBeGreaterThan(bareInputEquivalent.costMicroUsd!);
+    });
+
+    it('an unpriced 1h cache-write never bills LESS than the same token count at the bare input rate', () => {
+      const bareInputEquivalent = computeCost(usage({ inputTokens: 4000 }), price());
+      expect(bareInputEquivalent.costMicroUsd).toBe(10_000n);
+      const write = computeCost(usage({ inputTokens: 0, cacheWrite1hTokens: 4000 }), price());
+      expect(write.costMicroUsd).toBe(20_000n); // 4000 * 5.0 (2.5 × 2.00), /1M
+      expect(write.costMicroUsd!).toBeGreaterThan(bareInputEquivalent.costMicroUsd!);
+    });
+  });
+
+  it('a priced cache rate is used as-is and flags nothing', () => {
     const r = computeCost(
-      usage({ inputTokens: 1000, cacheWrite5mTokens: 400, outputTokens: 500 }),
-      price({ cacheWrite5mUsdPerM: null }),
+      usage({ inputTokens: 800, cachedReadTokens: 200, outputTokens: 500 }),
+      price({ cacheReadUsdPerM: '0.250000' }),
     );
-    expect(r.costMicroUsd).toBeNull();
+    expect(r.unpricedDimensions).toBeNull();
+    expect(r.unitPrices?.unpriced_dimensions).toBeUndefined();
   });
 
   it('cache tokens WITH their rate still bill (guard only fires on a populated-but-unpriced dimension)', () => {
@@ -144,6 +218,8 @@ describe('computeCost', () => {
     expect(computeCost(usage({ inputTokens: 1000 }), null)).toEqual({
       costMicroUsd: null,
       unitPrices: null,
+      // No dimension is named: the BASE rate is missing, so nothing about the request is priceable.
+      unpricedDimensions: null,
     });
     expect(
       computeCost(usage({ inputTokens: 1000 }), price({ inputUsdPerM: null })).costMicroUsd,
@@ -376,8 +452,11 @@ describe('computeCost — Part III multi-modal dimensions (part-3/04)', () => {
       price(),
     );
     // Fail-closed: the whole cost is flagged unpriced (null), not under-billed to the text-only amount.
+    // Unlike a cache line, an image rate has no bound derivable from the text rates, so there is
+    // nothing honest to bill — the dimension is named so the operator knows which rate to add.
     expect(r.costMicroUsd).toBeNull();
     expect(r.unitPrices).toBeNull();
+    expect(r.unpricedDimensions).toEqual(['image_in']);
   });
 
   it('web-search bills per query at the request context-size rate (medium default)', () => {

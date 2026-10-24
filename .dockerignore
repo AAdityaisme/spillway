@@ -8,6 +8,13 @@ node_modules
 !.env.example
 dist
 **/dist
+# tsc composite/incremental cache (gitignored, but git status doesn't gate the build
+# context). If one of these exists from a local `pnpm build`, tsc's incremental
+# compiler trusts it as authoritative and skips re-emitting files it believes are
+# already built — even though `dist` itself was just excluded above and doesn't
+# exist in the image, producing a near-empty dist with exit code 0 (no error).
+*.tsbuildinfo
+**/*.tsbuildinfo
 *.log
 .DS_Store
 coverage

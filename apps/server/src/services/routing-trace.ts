@@ -48,7 +48,7 @@ export async function assembleTrace(
     const [req] = (await tx.execute(sql`
       SELECT id, requested_model, status, cost_usd::text AS cost_usd,
              config_snapshot_hash, created_at
-        FROM requests WHERE id = ${requestId}`)) as unknown as {
+        FROM requests WHERE id = ${requestId} AND org_id = ${orgId}`)) as unknown as {
       id: string;
       requested_model: string | null;
       status: string;
@@ -60,7 +60,7 @@ export async function assembleTrace(
 
     const decisions = (await tx.execute(sql`
       SELECT effect, enforcement, deciding_policy_id, routing_rule_id, reason
-        FROM decision_logs WHERE request_id = ${requestId}
+        FROM decision_logs WHERE request_id = ${requestId} AND org_id = ${orgId}
        ORDER BY effect`)) as unknown as {
       effect: string;
       enforcement: string;
@@ -71,7 +71,7 @@ export async function assembleTrace(
 
     const attempts = (await tx.execute(sql`
       SELECT attempt_number, provider, model, outcome, error_code, cost_usd::text AS cost_usd
-        FROM request_attempts WHERE request_id = ${requestId}
+        FROM request_attempts WHERE request_id = ${requestId} AND org_id = ${orgId}
        ORDER BY attempt_number`)) as unknown as {
       attempt_number: number;
       provider: string | null;

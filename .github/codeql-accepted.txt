@@ -1,0 +1,44 @@
+# CodeQL findings reviewed and ACCEPTED. Format: <ruleId> <path>
+#
+# Why a baseline instead of switching the rule off: js/missing-rate-limiting earned its keep on
+# 2026-08-08 by finding a genuinely unmetered unauthenticated endpoint (/action-links/approval/*,
+# now limited). Excluding the whole rule to silence the residue would have thrown that away. Every
+# line here is a finding someone read and decided about; anything NOT on this list fails the build.
+#
+# Format: <ruleId> <path> <count>. The COUNT is the number of findings reviewed in that file; the
+# gate fails if the actual count exceeds it, so a NEW finding in an already-accepted file still
+# breaks the build instead of being silently absorbed.
+#
+# Adding a line is a security decision. Write the reason, and re-check it when the code moves.
+
+# --- js/missing-rate-limiting -------------------------------------------------------------------
+# CodeQL matches limiters applied INLINE in a handler. All of these are limited by an onRequest
+# hook registered on the enclosing scope, which the query cannot follow. Verified by reading the
+# registration in each case; the routes are metered.
+js/missing-rate-limiting apps/server/src/auth/authkit-routes.ts 2 # registerAuthRateLimit(), auth-rate-limit.ts:52
+js/missing-rate-limiting apps/server/src/control-plane/plugin.ts 1 # registerControlPlaneRateLimit(), control-plane/rate-limit.ts
+# action-links WAS a true positive — it had no limiter at all until this rule flagged it on
+# 2026-08-08. One is now registered in the same file (FixedWindowLimiter, onRequest, 20/10min per
+# IP); the query cannot see it for the same reason as the two above.
+js/missing-rate-limiting apps/server/src/action-links.ts 1 # onRequest limiter, action-links.ts:29
+
+# Static asset serving (@fastify/static). Rate limiting a static file read is the wrong control —
+# these are cacheable public assets with no authorization, no DB access, and no upstream cost, and
+# they are the one surface that belongs behind a CDN rather than an app-level limiter. Revisit if
+# static.ts ever grows a dynamic or authenticated path.
+js/missing-rate-limiting apps/server/src/static.ts 4
+
+# --- js/clear-text-logging ----------------------------------------------------------------------
+# The logged value is the env var's NAME (e.g. "OPENAI_API_KEY"), not its value — the message says
+# which variable is missing so an operator can fix it. CodeQL taints it because `process.env[
+# p.apiKeyEnv]` is read on the line above. Verified by reading the log statement; the secret itself
+# is never interpolated, and the branch only runs when the var is UNSET.
+js/clear-text-logging apps/server/src/jobs/certifier-smoke.ts 1
+
+# --- js/insufficient-password-hash --------------------------------------------------------------
+# Not a password. Virtual keys are 43 chars of base62 from a CSPRNG (~256 bits, auth/keys.ts), so
+# the slow-KDF reasoning behind this query does not apply: there is nothing to brute-force and no
+# low-entropy human input to stretch. ADR-006 chose sha256 deliberately — "never bcrypt" — because
+# the key hash is a UNIQUE index looked up on every gateway request, and a deliberately-slow hash
+# on that path is a DoS surface, not a defence. Revisit only if key entropy is ever reduced.
+js/insufficient-password-hash apps/server/src/data-plane/pipeline/auth.ts 1

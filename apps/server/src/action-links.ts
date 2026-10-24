@@ -5,6 +5,7 @@ import type { DatabaseClient } from './db/client.js';
 import { withOrg } from './db/tenancy.js';
 import { makeEffectRegistry, runEffect } from './services/effects/registry.js';
 import { verifyActionToken } from './services/alerts/action-token.js';
+import { FixedWindowLimiter, isLoopback } from './control-plane/rate-limit.js';
 
 export interface ActionLinksDeps {
   db: DatabaseClient;
@@ -25,6 +26,32 @@ export const actionLinksPlugin: FastifyPluginAsync<ActionLinksDeps> = async (
   const secret = config?.SPILLWAY_ACTION_TOKEN_SECRET;
   const registry = makeEffectRegistry({
     membershipFor: () => ({ byRoles: () => [], isMember: () => false }),
+  });
+
+  // Per-IP limiter. This route is UNAUTHENTICATED by design and every request runs an HMAC verify
+  // and, on success, a DB transaction — so without a bound it is a free amplifier: token guessing
+  // at line rate, and a DB-work loop that costs the attacker nothing. The HMAC itself is not
+  // brute-forceable, but "the crypto is strong" is not a reason to leave an unauthenticated
+  // endpoint unmetered (found by CodeQL js/missing-rate-limiting, 2026-08-08). Same fixed-window
+  // limiter and loopback bypass as /auth/* — fastify.inject() and local dev must not trip it.
+  const limiter = new FixedWindowLimiter();
+  const ACTION_LINK_LIMIT = 20;
+  const ACTION_LINK_WINDOW_MS = 10 * 60_000;
+  fastify.addHook('onRequest', async (req, reply) => {
+    if (isLoopback(req.ip)) return;
+    const retryAfter = limiter.hit(
+      `action-link:${req.ip}`,
+      ACTION_LINK_LIMIT,
+      ACTION_LINK_WINDOW_MS,
+      Date.now(),
+    );
+    if (retryAfter === null) return;
+    // Reply rather than throw: the error handler below maps SpillwayError, but replying directly
+    // keeps the 429 shape identical to /auth/* and skips the handler entirely.
+    void reply
+      .code(429)
+      .header('retry-after', String(Math.ceil(retryAfter / 1000)))
+      .send({ error: { code: 'rate_limited', message: 'too many action-link requests' } });
   });
 
   fastify.setErrorHandler((err, _req, reply) => {

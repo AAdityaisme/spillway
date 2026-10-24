@@ -14,6 +14,14 @@ import {
 import { runReconcile } from '../reconcile.js';
 import { healthKindFor, parseRetryAfter } from '../health/store.js';
 import { candidateKeyOf } from '../routing/resolve.js';
+import { classifyFailure } from '../ledger/bill-on-failure.js';
+import {
+  sseStreamOpened,
+  sseStreamClosed,
+  observeTtft,
+  recordStreamAbort,
+  recordProviderError,
+} from '../../observability/metrics.js';
 
 /**
  * SSE TEE (05-gateway-core §7) — the streaming counterpart of runBodyCapture. Uses
@@ -36,6 +44,13 @@ import { candidateKeyOf } from '../routing/resolve.js';
  *    (terminal usage chunk) or an estimate. Reconcile runs AFTER the stream ends, guarded by
  *    ctx.reconcileStarted (normal-end vs abort race) and bounded by a timeout so a stalled DB
  *    write can't hang shutdown (ADR-032 H1 / ADR-034).
+ *  - Pre-hijack disconnects (connect phase / first-event peek, BEFORE reply.hijack()) do NOT fall
+ *    under that finally — they used to just `return`, silently refunding the pre-dispatch budget hold
+ *    with no ledger row even when the upstream call had already been issued and may already be
+ *    billing real tokens (red-team P0: a well-timed disconnect bought free, unmetered inference). Both
+ *    catch blocks now distinguish "genuinely never dispatched" (client already gone before undici was
+ *    even called) from "dispatched, then the client vanished" and reconcile the latter via
+ *    reconcileClientDisconnect (floor-billed, outcome `client_closed`) — see it and classifyFailure.
  */
 
 const STREAM_FIRST_BYTE_TIMEOUT_MS = 30_000;
@@ -192,6 +207,25 @@ export async function runSseTee(
   adapter: Adapter,
   transformed: TransformResult,
 ): Promise<void> {
+  // KNOWN RACE, deliberately resolved this way. The abort can also fire in the window between this
+  // sample and undici actually putting bytes on the wire — in which case the request rejects with no
+  // I/O, but the catch below still floor-bills it as dispatched. undici exposes no "did the socket
+  // write" signal, so the window cannot be closed, only pointed in one direction:
+  //   - assume NOT dispatched → the exact P0 this fix exists to close (a well-timed disconnect buys
+  //     free, unmetered inference, repeatably, and budgets never see it);
+  //   - assume POSSIBLY dispatched → over-meter an input-token floor on a rare race.
+  // For a spend-governance gateway that asymmetry is not close. dispatch.ts's non-stream path made
+  // the same call with the same sample-then-call shape (`reachedModel`), so this is the established
+  // convention here, not a new one — change both together or neither.
+  //
+  // Checked BEFORE the call — mirrors dispatch.ts's non-stream attemptCandidate reachedModel gate.
+  // An abort that already fired never touched the wire (undici rejects the already-aborted signal
+  // synchronously, before any I/O) → genuinely nothing to reconcile. An abort that fires WHILE the
+  // call below is in flight is a DIFFERENT case: undici has already begun sending (or fully sent) the
+  // request, so the provider may already have received it and started (billable) generation before
+  // headers ever came back to us — see the catch below (red-team P0: a client disconnecting right
+  // after dispatch got free, unmetered inference because this path used to just `return`).
+  const abortedBeforeDispatch = ctx.clientAbort.signal.aborted;
   let res;
   try {
     res = await undiciRequest(transformed.url, {
@@ -207,8 +241,19 @@ export async function runSseTee(
     });
   } catch (err) {
     if (ctx.clientAbort.signal.aborted) {
-      ctx.req.log.info({ err }, 'client disconnected before stream started');
-      return; // nothing sent; nothing to reconcile (never reached upstream)
+      if (abortedBeforeDispatch) {
+        ctx.req.log.info({ err }, 'client disconnected before stream started');
+        return; // nothing sent; nothing to reconcile (never reached upstream)
+      }
+      // Dispatched, then the client vanished before we ever saw a status code. We cannot prove the
+      // provider didn't already ingest the request and start billable generation, so this must land a
+      // ledger row rather than silently letting the route's fallback finally refund the budget hold.
+      ctx.req.log.info(
+        { err },
+        'client disconnected mid-dispatch (upstream may already be billed)',
+      );
+      await reconcileClientDisconnect(ctx);
+      return;
     }
     throw new SpillwayError('provider_unavailable', 'upstream connect/first-byte failed', {
       httpStatus: 504,
@@ -224,6 +269,9 @@ export async function runSseTee(
     const errBody = await readErrorBodyBounded(res.body, ERROR_BODY_TIMEOUT_MS);
     const mapped = adapter.mapError(res.statusCode, errBody);
     ctx.errorCode = mapped.spillwayCode;
+    // provider_errors_total (§6.3): a streaming pre-2xx upstream error is a real provider error
+    // response — mirror the non-stream path. provider is the candidate's (catalog) provider.
+    recordProviderError(ctx.candidate.provider, res.statusCode, mapped.spillwayCode);
     // Honor an upstream Retry-After for the breaker cooldown, mirroring dispatch.ts's non-stream path —
     // the adapter can't see response headers, so thread the parsed value when it didn't set one. Without
     // this a streaming 429+Retry-After fell back to the default backoff and reopened sooner than the
@@ -274,6 +322,12 @@ export async function runSseTee(
     if (ctx.clientAbort.signal.aborted) {
       ctx.req.log.info({ err }, 'client disconnected during first-event peek');
       res.body.destroy();
+      // Unlike the connect phase above, res.statusCode was ALREADY confirmed 2xx before this peek
+      // started — the upstream unquestionably received the request and began responding, so this is
+      // never a "nothing was sent" case. Reconcile it (was previously a silent, unmetered return: the
+      // same P0 as the connect-catch, just past the point where dispatch is provable rather than merely
+      // possible).
+      await reconcileClientDisconnect(ctx);
       return;
     }
     // Genuine peek stall/failure pre-commit (the idle deadline destroyed the body) → retryable, mirror
@@ -337,7 +391,12 @@ export async function runSseTee(
 
   /** Write to the client with drain-backpressure, but never hang: bail on abort/close/stall. */
   const write = async (buf: Buffer): Promise<void> => {
-    if (ctx.timings.firstByte === undefined) ctx.timings.firstByte = Date.now() - ctx.startedAt;
+    if (ctx.timings.firstByte === undefined) {
+      ctx.timings.firstByte = Date.now() - ctx.startedAt;
+      // ttft_ms (§6.3): observe once, on the first byte written to the client. provider/model are
+      // the candidate's (post-route catalog) values, never the client alias.
+      observeTtft(ctx.candidate.provider, model, ctx.timings.firstByte);
+    }
     if (raw.write(buf)) return;
     await new Promise<void>((resolve, reject) => {
       const signal = ctx.clientAbort.signal;
@@ -365,6 +424,9 @@ export async function runSseTee(
   };
 
   try {
+    // active_sse_streams (§6.3): bumped as the FIRST line inside the try so the finally's matching
+    // drop is always balanced (setup between hijack and here cannot inc without the finally running).
+    sseStreamOpened();
     const headers: Record<string, string> = {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -450,9 +512,13 @@ export async function runSseTee(
       }
     } else {
       ctx.errorCode = 'client_closed_request';
+      // stream_aborts_total (§6.3): client hung up mid-stream (this settles as a usage_estimated row).
+      recordStreamAbort(ctx.candidate.provider, model);
     }
     ctx.req.log.warn({ err, cleanly: streamEndedCleanly, idleTimedOut }, 'stream ended abnormally');
   } finally {
+    // active_sse_streams: drop the gauge FIRST in the finally so it always balances the try's bump.
+    sseStreamClosed();
     if (idleTimer) clearTimeout(idleTimer);
     // getUsage returns real usage (usage_estimated=false) when a usage chunk was captured — even
     // if [DONE] never arrived — else an estimate (usage_estimated=true). No blanket override.
@@ -527,6 +593,47 @@ function extractDataPayload(block: string): string | null {
     if (line.startsWith('data:')) lines.push(line.slice(5).replace(/^ /, ''));
   }
   return lines.length ? lines.join('\n') : null;
+}
+
+/**
+ * Reconcile a client disconnect that hit AFTER the upstream call was actually issued — either mid-
+ * connect (undici's request was in flight) or mid-peek (a 2xx status was already confirmed). Real
+ * provider spend may already have occurred, so this always lands a ledger row rather than letting the
+ * pre-dispatch budget hold silently refund (red-team P0: repeatable free, unmetered inference).
+ *
+ * Mirrors dispatch.ts's non-stream `client_abort` handling: classifyFailure's `stream: true` variant is
+ * unconditionally `billed: true` (once truly dispatched, a disconnect never refunds). Neither call site
+ * has an adapter StreamParser yet — nothing was ever fed to one — so parsed output is 0 and input is
+ * VALIDATE's pre-computed estimate (`ctx.estimatedInputTokens`), never a captured usage chunk;
+ * usage_estimated is therefore always true (grep `usageEstimated` — this is the repo's existing
+ * estimated-usage convention, not a new one).
+ */
+async function reconcileClientDisconnect(ctx: PipelineContext): Promise<void> {
+  const bill = classifyFailure({
+    kind: 'client_disconnect',
+    stream: true,
+    parsedInputTokens: ctx.estimatedInputTokens,
+    parsedOutputTokens: 0,
+    cleanDone: false,
+  });
+  ctx.usage = {
+    input_tokens: bill.inputTokens,
+    output_tokens: bill.outputTokens,
+    cached_read_tokens: 0,
+    cache_write_5m_tokens: 0,
+    cache_write_1h_tokens: 0,
+    cache_type: null,
+    reasoning_tokens: 0,
+    usage_estimated: bill.usageEstimated,
+  };
+  // A real (2xx) upstream status, if we already have one (the peek call site), is more informative than
+  // the connect call site's default 0 — only backfill the "never got a status" case, mirroring
+  // dispatch.ts's non-stream client_abort 499 (nginx's client-closed convention).
+  ctx.upstreamStatus = ctx.upstreamStatus || 499;
+  ctx.isFinalAttempt = true; // client is gone; no further candidate will be attempted
+  ctx.errorCode = 'client_closed_request';
+  recordStreamAbort(ctx.candidate.provider, ctx.candidate.model);
+  await guardedReconcile(ctx, ctx.usage);
 }
 
 /**

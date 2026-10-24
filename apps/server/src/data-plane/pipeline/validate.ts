@@ -1,5 +1,6 @@
 import { ChatCompletionsRequest, EmbeddingsRequest, SpillwayError } from '@spillway/shared';
 import { estimateInputTokens } from '../streaming/estimator.js';
+import { recordBlock, recordRequestCompletion } from '../../observability/metrics.js';
 import type { ProviderName } from '../routing/compile.js';
 import type { PipelineContext, SafeKnobs } from './context.js';
 
@@ -14,6 +15,19 @@ const KNOWN_CAPABILITIES = new Set([
 ]);
 const PROVIDER_NAMES = new Set<ProviderName>(['openai', 'anthropic', 'gemini', 'openai_compat']);
 const SESSION_ID_RE = /^[A-Za-z0-9._:-]+$/;
+
+/**
+ * How many completions this body bills for. `n` MULTIPLIES billed output tokens (the prompt is
+ * billed once), so it is a spend multiplier and every place that reasons about output cost — the
+ * output clamp, the request features, and the BUDGET hold — must scale by the SAME number. One
+ * definition, because the clamp had it and the hold did not (red-team B5). Anything that is not a
+ * positive integer counts as 1: the upstream rejects such a body, so no output can be billed
+ * against it.
+ */
+export function completionCount(body: Record<string, unknown>): number {
+  const n = body.n;
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : 1;
+}
 
 const header = (ctx: PipelineContext, name: string): string | null => {
   const v = ctx.req.headers[name];
@@ -127,6 +141,11 @@ export function runValidate(ctx: PipelineContext): void {
 function enforceModelAllowList(ctx: PipelineContext): void {
   const allowed = ctx.policy.allowedModels;
   if (allowed && !allowed.includes(ctx.requestedModel)) {
+    // blocks_total{model_not_allowed} + requests_total{blocked} (§6.3) — the allow-list is a
+    // per-virtual-key policy → scope_type 'virtual_key'. CARDINALITY: requestedModel (the client's
+    // alias) is deliberately NOT a label; provider/model are 'unknown' (routing never ran).
+    recordBlock('model_not_allowed', 'virtual_key');
+    recordRequestCompletion('blocked', null, null, ctx.endpoint);
     throw new SpillwayError(
       'model_not_allowed',
       `model ${ctx.requestedModel} is not permitted for this key`,
@@ -236,8 +255,7 @@ export function applyValidatedBody(ctx: PipelineContext, body: Record<string, un
   //  - an OMITTED max_tokens left the ceiling unenforced entirely (model default applied), so
   //    impose the ceiling even when the client sent no limit.
   if (ctx.policy.maxOutputTokens !== null) {
-    const n = typeof body.n === 'number' && Number.isInteger(body.n) && body.n > 0 ? body.n : 1;
-    const ceiling = Math.max(1, Math.floor(ctx.policy.maxOutputTokens / n));
+    const ceiling = Math.max(1, Math.floor(ctx.policy.maxOutputTokens / completionCount(body)));
     const requested =
       typeof body.max_tokens === 'number'
         ? body.max_tokens
@@ -268,7 +286,7 @@ export function applyValidatedBody(ctx: PipelineContext, body: Record<string, un
     max_tokens: typeof body.max_tokens === 'number' ? body.max_tokens : null,
     temperature: typeof body.temperature === 'number' ? body.temperature : null,
     stream: ctx.stream,
-    n: typeof body.n === 'number' && Number.isInteger(body.n) && body.n > 0 ? body.n : 1,
+    n: completionCount(body),
     estimated_input_tokens: ctx.estimatedInputTokens,
   };
 }

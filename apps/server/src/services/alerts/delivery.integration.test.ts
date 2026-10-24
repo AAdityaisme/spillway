@@ -148,4 +148,28 @@ describe('alert delivery (§20 §5)', () => {
     expect(a.delivered + b.delivered).toBe(1);
     expect(sink.sent).toHaveLength(1);
   });
+
+  // F1 red-team round 2, defect 1: a channel URL is only validated at alert create/update
+  // (control-plane/routes/alerts.ts). The drain reads `alerts.channels` straight from the DB with no
+  // re-check in between — so a row that was safe when written (or one that slipped past a bug in the
+  // write-time check, e.g. the trailing-dot bypass fixed alongside this) reaches the network on every
+  // future drain, forever, until someone notices. Prove the drain itself — not just deliverTestFire —
+  // now refuses it before the sink is ever called.
+  it('refuses to dispatch a channel whose URL is unsafe at DRAIN time, without ever calling the sink', async () => {
+    // Insert the payload channels directly via SQL so this bypasses `validateChannelUrls` entirely —
+    // modelling "the write-time check didn't (or couldn't) catch this", the exact scenario a
+    // write-time-only guard can never close.
+    await fireEvent(
+      { event_type: 'anomaly', severity: 'critical' },
+      { channels: [{ type: 'webhook', url: 'https://localhost./hook', secret: 's' }] },
+    );
+    const sink = recordingSink();
+    const res = await run(sink);
+    expect(sink.sent).toHaveLength(0); // the network call never happened
+    expect(res.delivered).toBe(0);
+    expect(res.failed).toBe(1); // rejected the same way a live sink failure would be — deferred/retried
+    const [row] = await h.adminSql<{ last_error: string | null }[]>`
+      SELECT last_error FROM alert_events WHERE org_id = ${orgA}`;
+    expect(row!.last_error).toMatch(/loopback/);
+  });
 });

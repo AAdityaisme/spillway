@@ -45,6 +45,10 @@ const BY_PLAN: Record<string, readonly Entitlement[]> = {
   enterprise: ENTERPRISE,
 };
 
+/** Valid plan names (BY_PLAN's keys) — the source of truth for anything validating a plan
+ * value, e.g. tools/ops/set-org-plan.ts, so that list can never drift from this map. */
+export const PLAN_NAMES: readonly string[] = Object.keys(BY_PLAN);
+
 /** Resolve an org plan → its entitlement set. Unknown plan → empty set (fail closed). */
 export function resolveEntitlements(plan: string): ReadonlySet<Entitlement> {
   return new Set(BY_PLAN[plan] ?? []);

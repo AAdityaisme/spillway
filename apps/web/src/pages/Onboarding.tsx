@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { Fragment, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '../components/primitives/Button.js';
+import { Callout } from '../components/primitives/Callout.js';
 import { Card } from '../components/primitives/Card.js';
 import { CodeBlock } from '../components/primitives/CodeBlock.js';
 import { Field, Input } from '../components/primitives/Field.js';
@@ -82,6 +83,9 @@ export function OnboardingPage() {
   // Step 2 — provider key
   const [keyLabel, setKeyLabel] = useState('');
   const [apiKey, setApiKey] = useState('');
+  // Tracks whether a provider key actually exists, not just whether step 2 was passed —
+  // step 4's quickstart 403s without one, so it needs to know the difference from "skipped".
+  const [providerKeyAdded, setProviderKeyAdded] = useState(false);
 
   // Step 3 — virtual key
   const [vkeyName, setVkeyName] = useState('');
@@ -102,6 +106,7 @@ export function OnboardingPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [activeOrgId, 'provider-keys'] });
       toast.success('Provider key saved.');
+      setProviderKeyAdded(true);
       setStep(3);
     },
   });
@@ -260,7 +265,7 @@ export function OnboardingPage() {
                   onClick={() => setStep(3)}
                   className="focus-ring rounded-[var(--radius-btn)] font-mono text-xs text-[var(--ink-mut)] transition-colors hover:text-[var(--blue)]"
                 >
-                  Skip for now →
+                  Skip — requests will 403 until you add one →
                 </button>
               </div>
             </form>
@@ -314,6 +319,18 @@ export function OnboardingPage() {
               Point your existing OpenAI SDK at Spillway. No other changes — streaming, tool calls,
               and all models work exactly as before.
             </p>
+            {!providerKeyAdded ? (
+              <div className="mt-5" data-testid="onboarding-no-provider-key-warning">
+                <Callout tone="amber" title="No provider key">
+                  This will 403. Spillway only routes to providers your org has connected, and you
+                  skipped that step — there's no shared fallback key. Add one on{' '}
+                  <Link to="/providers" className="underline">
+                    Providers
+                  </Link>{' '}
+                  before running this.
+                </Callout>
+              </div>
+            ) : null}
             <div className="mt-5">
               <CodeBlock code={quickstart} testId="onboarding-quickstart-copy-btn" />
             </div>

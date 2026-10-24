@@ -3,7 +3,7 @@ import { getTestKeyPair } from './test-keypair.js';
 
 export interface TestJwtOptions {
   sub?: string; // WorkOS user id; default: a stable test id
-  email?: string; // default: 'test@spillway.dev'
+  email?: string; // default: 'test@spillway.cloud'
   /** iss claim — must match the issuer the server verifies against (workosJwksUrl base). */
   issuer: string;
   /** aud claim; default: 'spillway'. */
@@ -26,7 +26,7 @@ export interface TestJwtOptions {
 export async function mintTestJwt(opts: TestJwtOptions): Promise<string> {
   const { privateKey } = await getTestKeyPair();
   const sub = opts.sub ?? 'user_01TESTUSER000000000000000';
-  const jwt = new SignJWT({ email: opts.email ?? 'test@spillway.dev' })
+  const jwt = new SignJWT({ email: opts.email ?? 'test@spillway.cloud' })
     .setProtectedHeader({ alg: 'RS256' })
     .setSubject(sub)
     .setIssuer(opts.issuer)

@@ -11,10 +11,12 @@ import {
   rateLimitHeaders,
   budgetBlockHeaders,
   guardrailBlockHeaders,
+  setErrorsDocsUrl,
+  DEFAULT_ERRORS_DOCS_URL,
 } from './errors.js';
 
 describe('SpillwayError', () => {
-  it('carries code, httpStatus, and a derived docs url', () => {
+  it('carries code, httpStatus, and a derived docs url (index page + code fragment)', () => {
     const err = new SpillwayError('budget_exceeded', 'Budget exceeded: $20.00 of $20.00 (day)', {
       httpStatus: 402,
       details: { scope_type: 'virtual_key', period: 'day' },
@@ -22,8 +24,18 @@ describe('SpillwayError', () => {
     expect(err.type).toBe('spillway_error');
     expect(err.code).toBe('budget_exceeded');
     expect(err.httpStatus).toBe(402);
-    expect(err.docsUrl).toBe('https://docs.spillway.dev/errors/budget_exceeded');
+    expect(err.docsUrl).toBe(`${DEFAULT_ERRORS_DOCS_URL}#budget_exceeded`);
     expect(err).toBeInstanceOf(Error);
+  });
+
+  it('setErrorsDocsUrl overrides the base for every subsequently constructed error', () => {
+    setErrorsDocsUrl('https://docs.example.com/errors');
+    try {
+      const err = new SpillwayError('rate_limited', 'too many', { httpStatus: 429 });
+      expect(err.docsUrl).toBe('https://docs.example.com/errors#rate_limited');
+    } finally {
+      setErrorsDocsUrl(DEFAULT_ERRORS_DOCS_URL);
+    }
   });
 
   it('never leaks the underlying cause into the serialized control-plane body', () => {
@@ -36,7 +48,7 @@ describe('SpillwayError', () => {
       error: {
         code: 'upstream_error',
         message: 'provider returned 500',
-        docs_url: 'https://docs.spillway.dev/errors/upstream_error',
+        docs_url: `${DEFAULT_ERRORS_DOCS_URL}#upstream_error`,
       },
     });
     expect(JSON.stringify(body)).not.toContain('sk-secret-leaked-key');

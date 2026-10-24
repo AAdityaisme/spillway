@@ -70,11 +70,10 @@ body::after{opacity:.02}
       <a href="#how">How it works</a>
       <a href="#features">Features</a>
       <a href="#developers">Developers</a>
-      <a href="#pricing">Pricing</a>
-      <a class="nav-search keep" href="#" aria-label="Search">
+      <span class="nav-search keep" aria-hidden="true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m21 21-4.3-4.3"></path></svg>
-      </a>
-      <a class="btn btn-primary keep" href="#cta">Start free</a>
+      </span>
+      <a class="btn btn-primary keep" href="https://github.com/AAdityaisme/spillway">View on GitHub</a>
     </div>
     <span class="progress" aria-hidden="true"></span>
   </div>
@@ -86,11 +85,12 @@ body::after{opacity:.02}
 <section class="tile light hero" id="top">
   <canvas class="hero-mist" id="mist" aria-hidden="true"></canvas>
   <div class="container">
-    <span class="eyebrow reveal"><span class="dot"></span>now in open alpha</span>
+    <span class="eyebrow reveal"><span class="dot"></span>open source · hosted beta not open yet</span>
     <h1 class="t-hero reveal reveal-mask" style="transition-delay:.06s"><span class="line"><em>AI spend, governed.</em></span><span class="line"><em>Not just observed.</em></span></h1>
     <p class="t-lead reveal" style="transition-delay:.16s">Spillway is the control plane between your apps and every model — budgets that block, approvals that gate, and routing that saves.</p>
+    <p class="fine reveal" style="transition-delay:.17s">The gateway is Apache-2.0 and self-hostable today. The hosted service and pricing are not live yet.</p>
     <div class="hero-ctas reveal" style="transition-delay:.18s">
-      <a class="btn btn-primary" href="#cta">Start free</a>
+      <a class="btn btn-primary" href="https://github.com/AAdityaisme/spillway">View on GitHub</a>
       <a class="text-link" href="#developers" style="font-size:18px">Watch it work <span class="chev" aria-hidden="true">›</span></a>
     </div>
 
@@ -100,7 +100,7 @@ body::after{opacity:.02}
       <div class="console" id="console">
         <div class="console-bar">
           <span class="dots"><i></i><i></i><i></i></span>
-          <span class="addr">api.spillway.dev / v1 / route</span>
+          <span class="addr">api.spillway.cloud / v1 / route</span>
           <span class="live">live</span>
         </div>
         <div class="console-body">
@@ -208,7 +208,7 @@ body::after{opacity:.02}
         <span class="eyebrow"><span class="dot"></span>finance-grade</span>
         <h2 class="t-display">See every dollar. Govern the next one.</h2>
         <p class="t-lead-airy muted">Live spend by org, team, and key — every request priced from a unit-price snapshot, and the monthly statement reconciles to the cent.</p>
-        <a class="text-link" href="#">Explore the console <span class="chev" aria-hidden="true">›</span></a>
+        <a class="text-link" href="https://github.com/AAdityaisme/spillway">Explore the console <span class="chev" aria-hidden="true">›</span></a>
       </div>
       <div class="visual">
         <div class="vcard cost-card" id="costCard">
@@ -260,7 +260,7 @@ body::after{opacity:.02}
         <span class="eyebrow"><span class="dot"></span>transparency</span>
         <h2 class="t-display">Replay any decision.</h2>
         <p class="t-lead-airy muted">Every prompt, its tier, the model it took, and what you saved.</p>
-        <a class="text-link" href="#">See the route log <span class="chev" aria-hidden="true">›</span></a>
+        <a class="text-link" href="https://github.com/AAdityaisme/spillway">See the route log <span class="chev" aria-hidden="true">›</span></a>
       </div>
       <div class="visual">
         <div class="tilt-wrap">
@@ -290,7 +290,7 @@ body::after{opacity:.02}
         <span class="eyebrow"><span class="dot"></span>governance</span>
         <h2 class="t-display">Budgets that block. Approvals that&nbsp;gate.</h2>
         <p class="t-lead-airy muted">Limits cascade org → team → key and hard-stop at the gateway. Big spends wait for a human yes.</p>
-        <a class="text-link" href="#pricing">See governance <span class="chev" aria-hidden="true">›</span></a>
+        <a class="text-link" href="#arch">See the gateway <span class="chev" aria-hidden="true">›</span></a>
       </div>
       <div class="visual">
         <div class="vcard gov-card" id="govCard">
@@ -487,7 +487,7 @@ body::after{opacity:.02}
         <span class="eyebrow"><span class="dot"></span>drop-in compatible</span>
         <h2 class="t-display">Change one line.</h2>
         <p class="t-lead-airy muted">Point your OpenAI client at Spillway. Keep everything else.</p>
-        <a class="btn btn-ghost" href="#" style="margin-top:24px">Read the docs <span aria-hidden="true">›</span></a>
+        <a class="btn btn-ghost" href="https://spillway.mintlify.site/quickstart" style="margin-top:24px">Read the docs <span aria-hidden="true">›</span></a>
       </div>
       <div class="code-card reveal" style="transition-delay:.1s">
         <div class="code-head"><i></i><i></i><i></i><span class="f">route.py</span></div>
@@ -495,7 +495,7 @@ body::after{opacity:.02}
 <span class="kw">from</span> openai <span class="kw">import</span> OpenAI
 
 client = <span class="fn">OpenAI</span>(
-    <span class="hl">base_url=<span class="str">"https://api.spillway.dev/v1"</span></span>,
+    <span class="hl">base_url=<span class="str">"https://api.spillway.cloud/v1"</span></span>,
     api_key=os.environ[<span class="str">"SPILLWAY_KEY"</span>],
 )
 
@@ -512,57 +512,16 @@ resp = client.chat.completions.<span class="fn">create</span>(
   </div>
 </section>
 
-<!-- ============ PRICING (light) ============ -->
-<section class="tile light" id="pricing">
-  <div class="container">
-    <div class="section-head center reveal">
-      <span class="eyebrow"><span class="dot"></span>pricing</span>
-      <h2 class="t-display">Free to start.</h2>
-      <p class="t-lead-airy muted">Governance when you need it. Never a percent of your spend.</p>
-    </div>
-    <div class="plan-chips">
-      <div class="plan reveal">
-        <div class="name">Free</div>
-        <div class="price">$0<span> / mo</span></div>
-        <ul>
-          <li><span class="ck">✓</span> One endpoint, every model</li>
-          <li><span class="ck">✓</span> Budgets &amp; spend alerts</li>
-        </ul>
-        <a class="btn btn-ghost" href="#cta">Start free</a>
-      </div>
-      <div class="plan featured reveal" style="transition-delay:.08s">
-        <div class="name">Pro</div>
-        <div class="price">$49<span> / mo</span></div>
-        <ul>
-          <li><span class="ck">✓</span> Routing policies &amp; guardrails</li>
-          <li><span class="ck">✓</span> Anomaly detection</li>
-        </ul>
-        <a class="btn btn-primary" href="#cta">Start free</a>
-      </div>
-      <div class="plan reveal" style="transition-delay:.16s">
-        <div class="name">Governance</div>
-        <div class="price">$299<span> / mo</span></div>
-        <ul>
-          <li><span class="ck">✓</span> Approval workflows</li>
-          <li><span class="ck">✓</span> Chargeback &amp; audit exports</li>
-        </ul>
-        <a class="btn btn-ghost" href="#cta">Start free</a>
-      </div>
-    </div>
-    <p class="fine reveal" style="text-align:center;margin-top:28px">Enterprise — in-region, on-prem, SLA · <a class="text-link" href="#cta">Talk to us <span class="chev" aria-hidden="true">›</span></a></p>
-  </div>
-</section>
-
 <!-- ============ CTA BAND (parchment) ============ -->
 <section class="tile parchment cta-band" id="cta">
   <div class="container reveal">
     <span class="eyebrow"><span class="dot"></span>get started</span>
-    <h2 class="t-display" style="margin-top:16px">Govern your AI spend today.</h2>
+    <h2 class="t-display" style="margin-top:16px">Run it yourself today.</h2>
     <div class="hero-ctas">
-      <a class="btn btn-primary btn-large" href="#">Start free</a>
+      <a class="btn btn-primary btn-large" href="https://github.com/AAdityaisme/spillway">View on GitHub</a>
       <a class="text-link" href="#developers" style="font-size:18px">Watch it work <span class="chev" aria-hidden="true">›</span></a>
     </div>
-    <p class="fine">No credit card · 5-minute setup</p>
+    <p class="fine">Apache-2.0 · self-host from the repo · hosted plans when they are real</p>
   </div>
 </section>
 
@@ -579,24 +538,24 @@ resp = client.chat.completions.<span class="fn">create</span>(
       </div>
       <div>
         <h4>Product</h4>
-        <ul><li><a href="#how">How it works</a></li><li><a href="#features">Features</a></li><li><a href="#governance">Governance</a></li><li><a href="#pricing">Pricing</a></li></ul>
+        <ul><li><a href="#how">How it works</a></li><li><a href="#features">Features</a></li><li><a href="#governance">Governance</a></li></ul>
       </div>
       <div>
         <h4>Developers</h4>
-        <ul><li><a href="#developers">Documentation</a></li><li><a href="#">API reference</a></li><li><a href="#">Policies</a></li><li><a href="#">Status</a></li></ul>
+        <ul><li><a href="#developers">Documentation</a></li><li><a href="https://spillway.mintlify.site/api-reference/introduction">API reference</a></li><li><a>Policies</a></li><li><a>Status</a></li></ul>
       </div>
       <div>
         <h4>Company</h4>
-        <ul><li><a href="#">About</a></li><li><a href="#">Blog</a></li><li><a href="#">Careers</a></li><li><a href="#">Contact</a></li></ul>
+        <ul><li><a>About</a></li><li><a>Blog</a></li><li><a>Careers</a></li><li><a href="https://github.com/AAdityaisme/spillway/issues">Contact</a></li></ul>
       </div>
       <div>
         <h4>Legal</h4>
-        <ul><li><a href="#">Privacy</a></li><li><a href="#">Security</a></li><li><a href="#">Terms</a></li><li><a href="#">DPA</a></li></ul>
+        <ul><li><a>Privacy</a></li><li><a href="https://github.com/AAdityaisme/spillway/security/policy">Security</a></li><li><a>Terms</a></li><li><a>DPA</a></li></ul>
       </div>
     </div>
     <div class="footer-legal">
       <span>© 2026 Spillway Labs, Inc. Early access — figures are illustrative until your traffic replaces them.</span>
-      <span class="links"><a href="#">Privacy</a><a href="#">Terms</a><a href="#">Cookies</a></span>
+      <span class="links"><a>Privacy</a><a>Terms</a><a>Cookies</a></span>
     </div>
   </div>
 </footer>
@@ -1315,7 +1274,6 @@ resp = client.chat.completions.<span class="fn">create</span>(
     arch: 'one base_url · every request metered, judged, and logged before dispatch',
     grScroll: 'June 14 · request <b>req_8f2a…c4</b> · escalated once · shipped at <b>0.94</b>',
     developers: 'integration · <b>1</b> line changed · <b>0</b> SDKs added',
-    pricing: 'pricing · <b>$0</b> to start · never a percent of spend',
   };
   document.querySelectorAll('main > section').forEach(function(sec){
     var t=LINES[sec.id]; if(!t) return;

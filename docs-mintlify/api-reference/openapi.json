@@ -3,7 +3,7 @@
   "info": {
     "title": "Spillway API",
     "version": "1.0.0",
-    "description": "The control plane for AI spend. One OpenAI-compatible gateway (`/v1/*`) plus a governance and administration API (`/api/*`). Request bodies are generated from the request/response zod schemas \u2014 the single source of truth."
+    "description": "The control plane for AI spend. One OpenAI-compatible gateway (`/v1/*`) plus a governance and administration API (`/api/*`). Request bodies are generated from the zod schemas in `@spillway/shared` — the single source of truth."
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
       "virtualKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Virtual key `mk-live-\u2026` on the data plane. `x-api-key: mk-live-\u2026` is also accepted."
+        "description": "Virtual key `mk-live-…` on the data plane. `x-api-key: mk-live-…` is also accepted."
       },
       "sessionToken": {
         "type": "http",
@@ -30,7 +30,7 @@
       "adminKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Admin API key `mka-\u2026` for machine control-plane access. Requires `X-Spillway-Org`."
+        "description": "Admin API key `mk-admin-…` for machine control-plane access. Requires `X-Spillway-Org`."
       }
     },
     "schemas": {
@@ -105,7 +105,7 @@
         "required": [
           "error"
         ],
-        "description": "Control-plane error envelope (\u00a71.4)."
+        "description": "Control-plane error envelope (§1.4)."
       },
       "OrgList": {
         "type": "object",
@@ -140,7 +140,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "MemberList": {
         "type": "object",
@@ -175,7 +175,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "TeamList": {
         "type": "object",
@@ -210,7 +210,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "ProviderKeyList": {
         "type": "object",
@@ -245,7 +245,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "VirtualKeyList": {
         "type": "object",
@@ -280,7 +280,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "AdminKeyList": {
         "type": "object",
@@ -315,7 +315,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "BudgetList": {
         "type": "object",
@@ -350,7 +350,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "AliasList": {
         "type": "object",
@@ -385,7 +385,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "RoutingRuleList": {
         "type": "object",
@@ -420,7 +420,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "PolicyList": {
         "type": "object",
@@ -455,7 +455,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "DecisionLogList": {
         "type": "object",
@@ -490,7 +490,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "AlertList": {
         "type": "object",
@@ -525,7 +525,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "ApprovalList": {
         "type": "object",
@@ -560,7 +560,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "ApprovalPolicyList": {
         "type": "object",
@@ -595,7 +595,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "AutomationRuleList": {
         "type": "object",
@@ -630,7 +630,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "DelegationList": {
         "type": "object",
@@ -665,7 +665,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       },
       "RequestList": {
         "type": "object",
@@ -700,7 +700,7 @@
           "data",
           "pagination"
         ],
-        "description": "Cursor-paginated list (\u00a71.3)."
+        "description": "Cursor-paginated list (§1.3)."
       }
     },
     "parameters": {}
@@ -715,6 +715,59 @@
         "security": [
           {
             "virtualKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Pin this request to a routing session (sticky provider/model across a conversation). Header wins over body `session_id`.",
+              "example": "chat-7f3a2b"
+            },
+            "required": false,
+            "name": "x-spillway-session-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated capability hard-filter (e.g. `vision,tool_use`) — candidates lacking any listed capability are excluded. Header wins over body `spillway.require_capabilities`. Unknown capability → 422.",
+              "example": "vision,tool_use"
+            },
+            "required": false,
+            "name": "x-spillway-require-capabilities",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Disambiguate a model name served by multiple providers. Must be a known provider AND on the key's allow-list (403 `model_not_allowed` otherwise).",
+              "example": "anthropic"
+            },
+            "required": false,
+            "name": "x-spillway-provider",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opt into per-request tracing: `on` / `1` / `true` (case-insensitive). The response then carries `x-spillway-trace-id`.",
+              "example": "on"
+            },
+            "required": false,
+            "name": "x-spillway-trace",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "JSON object of request tags merged into the request `metadata` for reporting (body `metadata` wins on collision). Bounded: ≤16 keys total, key ≤64 chars, value ≤256 chars.",
+              "example": "{\"team\":\"platform\",\"feature\":\"chat\"}"
+            },
+            "required": false,
+            "name": "x-spillway-tags",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -796,6 +849,59 @@
         "security": [
           {
             "virtualKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Pin this request to a routing session (sticky provider/model across a conversation). Header wins over body `session_id`.",
+              "example": "chat-7f3a2b"
+            },
+            "required": false,
+            "name": "x-spillway-session-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Comma-separated capability hard-filter (e.g. `vision,tool_use`) — candidates lacking any listed capability are excluded. Header wins over body `spillway.require_capabilities`. Unknown capability → 422.",
+              "example": "vision,tool_use"
+            },
+            "required": false,
+            "name": "x-spillway-require-capabilities",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Disambiguate a model name served by multiple providers. Must be a known provider AND on the key's allow-list (403 `model_not_allowed` otherwise).",
+              "example": "anthropic"
+            },
+            "required": false,
+            "name": "x-spillway-provider",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Opt into per-request tracing: `on` / `1` / `true` (case-insensitive). The response then carries `x-spillway-trace-id`.",
+              "example": "on"
+            },
+            "required": false,
+            "name": "x-spillway-trace",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "JSON object of request tags merged into the request `metadata` for reporting (body `metadata` wins on collision). Bounded: ≤16 keys total, key ≤64 chars, value ≤256 chars.",
+              "example": "{\"team\":\"platform\",\"feature\":\"chat\"}"
+            },
+            "required": false,
+            "name": "x-spillway-tags",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -895,9 +1001,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -943,9 +1046,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1022,9 +1122,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1072,9 +1169,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1155,9 +1249,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1203,9 +1294,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1285,9 +1373,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1364,13 +1449,10 @@
         "tags": [
           "Members"
         ],
-        "summary": "Remove a member (\u22651 owner invariant enforced).",
+        "summary": "Remove a member (≥1 owner invariant enforced).",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1419,9 +1501,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1467,9 +1546,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1546,9 +1622,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1629,9 +1702,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1681,9 +1751,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1729,9 +1796,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1815,9 +1879,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1867,9 +1928,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -1915,9 +1973,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2041,9 +2096,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2123,12 +2175,10 @@
           "Admin keys"
         ],
         "summary": "List admin API keys.",
+        "description": "⚠️ **Admin-key authentication is not yet enabled.** Keys can be minted, listed, and revoked, but no request path accepts them as a credential yet — a minted key grants nothing until the verify path ships.",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2171,12 +2221,10 @@
           "Admin keys"
         ],
         "summary": "Mint an admin API key (plaintext returned ONCE).",
+        "description": "⚠️ **Admin-key authentication is not yet enabled.** The key is minted and revealed once, and the response carries a `warning` field saying so — it does not grant access until the verify path ships. Do not build automation against admin keys yet.",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2254,9 +2302,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2337,9 +2382,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2385,9 +2427,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2505,9 +2544,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2604,9 +2640,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2656,9 +2689,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2704,9 +2734,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -2890,9 +2917,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3078,9 +3102,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3130,9 +3151,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3178,9 +3196,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3582,9 +3597,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -3988,9 +4000,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4040,9 +4049,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4088,9 +4094,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4262,9 +4265,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4435,9 +4435,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4483,13 +4480,10 @@
         "tags": [
           "Guardrails"
         ],
-        "summary": "Shadow-impact aggregate \u2014 \"would have denied N requests / blocked $X\" (16 \u00a78.2).",
+        "summary": "Shadow-impact aggregate — \"would have denied N requests / blocked $X\" (16 §8.2).",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4544,13 +4538,10 @@
         "tags": [
           "Guardrails"
         ],
-        "summary": "Lint the effective routing rules + guardrail policies (16 \u00a79.1 L1/L2/L5).",
+        "summary": "Lint the effective routing rules + guardrail policies (16 §9.1 L1/L2/L5).",
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4600,9 +4591,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4650,9 +4638,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4711,9 +4696,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4759,9 +4741,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4865,9 +4844,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -4957,9 +4933,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5009,9 +4982,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5057,9 +5027,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5109,9 +5076,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5170,9 +5134,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5231,9 +5192,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5292,9 +5250,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5340,9 +5295,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5520,9 +5472,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5683,9 +5632,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5735,9 +5681,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5783,9 +5726,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5860,7 +5800,8 @@
                       "string",
                       "null"
                     ],
-                    "maxLength": 120
+                    "maxLength": 120,
+                    "pattern": "^\\s*@every\\s+\\d+[smh]\\s*$"
                   },
                   "notifyOnlyUntil": {
                     "type": [
@@ -5915,9 +5856,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -5967,9 +5905,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6039,7 +5974,8 @@
                       "string",
                       "null"
                     ],
-                    "maxLength": 120
+                    "maxLength": 120,
+                    "pattern": "^\\s*@every\\s+\\d+[smh]\\s*$"
                   },
                   "notifyOnlyUntil": {
                     "type": [
@@ -6087,9 +6023,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6139,9 +6072,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6187,9 +6117,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6275,9 +6202,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6327,9 +6251,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6377,9 +6298,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6429,9 +6347,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6481,9 +6396,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6533,9 +6445,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6585,9 +6494,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [
@@ -6637,9 +6543,6 @@
         "security": [
           {
             "sessionToken": []
-          },
-          {
-            "adminKey": []
           }
         ],
         "parameters": [

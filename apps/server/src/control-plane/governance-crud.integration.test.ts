@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { makeTestApp, type TestHarness } from '../../test/helpers/app.js';
+import { MAX_POLICIES_PER_ORG } from '../data-plane/policy/bounds.js';
 
 /**
  * B6.2–B6.5 governance CRUD: aliases + routing-rules (gateway-core) + guardrail policies (Governance,
@@ -100,6 +101,36 @@ describe('governance CRUD (B6.2–B6.5)', () => {
     });
     expect(gated.statusCode).toBe(402);
     expect(gated.json<{ error: { code: string } }>().error.code).toBe('tier_required');
+  });
+
+  // Red-team P0: evaluateGuardrails (data-plane/policy/guardrails.ts) is intentionally exhaustive
+  // (no short-circuit — 16 §3, the F1 fix), so an unbounded policy count is an unbounded per-request
+  // CPU cost. MAX_POLICIES_PER_ORG (data-plane/policy/bounds.ts) caps it at the only place N grows.
+  it('policies: the per-org cap — at limit succeeds, over limit rejects (P0 unbounded-N DoS)', async () => {
+    const { hdr } = await seed();
+    const orgId = hdr['x-spillway-org']!;
+    // Seed straight to one below the cap; bulk INSERT so this stays fast regardless of the cap size.
+    await h.adminSql`
+      INSERT INTO governance_policies (org_id, name, effect, reason, match, enforcement, enabled)
+      SELECT ${orgId}, 'bulk-' || gs, 'deny', 'r', ${h.adminSql.json({} as never)}, 'enforce', true
+      FROM generate_series(1, ${MAX_POLICIES_PER_ORG - 1}) gs`;
+
+    const atLimit = await inject(hdr, 'POST', '/api/policies', {
+      name: 'at-limit',
+      effect: 'deny',
+      reason: 'r',
+    });
+    expect(atLimit.statusCode, `at-limit create failed: ${atLimit.body}`).toBe(201);
+
+    const overLimit = await inject(hdr, 'POST', '/api/policies', {
+      name: 'over-limit',
+      effect: 'deny',
+      reason: 'r',
+    });
+    expect(overLimit.statusCode).toBe(429);
+    const err = overLimit.json<{ error: { code: string; details?: { limit: number } } }>().error;
+    expect(err.code).toBe('validation_error');
+    expect(err.details?.limit).toBe(MAX_POLICIES_PER_ORG);
   });
 
   it('alerts: create (pro); unknown kind 422; system kind 422; free → 402', async () => {

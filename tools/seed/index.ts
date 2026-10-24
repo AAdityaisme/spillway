@@ -3,6 +3,7 @@ import { withOrg } from '../../apps/server/src/db/tenancy.js';
 import { orgs, virtualKeys, providerKeys, modelPrices } from '../../apps/server/src/db/schema.js';
 import { generateVirtualKey } from '../../apps/server/src/auth/keys.js';
 import { Encryptor } from '../../apps/server/src/services/encryptor.js';
+import { ENC_KEY_FIELDS } from '../../apps/server/src/config.js';
 import { capabilitiesFor } from '../../packages/pricing/src/capabilities.js';
 
 /**
@@ -50,12 +51,27 @@ async function main(): Promise<void> {
   let providerKeyNote = 'skipped — set OPENAI_API_KEY in .env to seed one';
   const openaiKey = process.env.OPENAI_API_KEY;
   if (openaiKey) {
-    const encKeyB64 = process.env.SPILLWAY_ENC_KEY_V1;
-    if (!encKeyB64) {
-      console.error('SPILLWAY_ENC_KEY_V1 not set — cannot seal the provider key');
+    // Driven off config.ts's ENC_KEY_FIELDS rather than hardcoding v1: after a completed
+    // rotation V1 is unset by design, and a v1-only seed would refuse to run against a
+    // perfectly healthy environment.
+    const encKeys = new Map<number, Buffer>();
+    for (const [version, field] of ENC_KEY_FIELDS) {
+      const b64 = process.env[field];
+      if (b64) encKeys.set(version, Buffer.from(b64, 'base64'));
+    }
+    // Seal under the CONFIGURED current version, mirroring makeEncryptor — not the newest key
+    // present. Those differ in the intended pre-cutover state (V2 staged so every instance can
+    // decrypt an already-flipped peer's writes, CURRENT still 1): sealing under the highest key
+    // would write a v2 row while the server is still sealing at v1, and aborting the rotation by
+    // unsetting V2 would then leave that provider key permanently undecryptable.
+    const currentVersion = Number(process.env.SPILLWAY_ENC_KEY_CURRENT ?? 1);
+    if (!encKeys.has(currentVersion)) {
+      console.error(
+        `SPILLWAY_ENC_KEY_CURRENT is ${currentVersion}, but SPILLWAY_ENC_KEY_V${currentVersion} is not set — cannot seal the provider key`,
+      );
       process.exit(1);
     }
-    const encryptor = new Encryptor(new Map([[1, Buffer.from(encKeyB64, 'base64')]]), 1);
+    const encryptor = new Encryptor(encKeys, currentVersion);
     await withOrg(db, org.id, async (tx) => {
       // no drizzle-orm helper imports here — tools/ resolves a different hoisted instance
       // than apps/server and the mixed SQL objects fail to typecheck; filter in JS instead.

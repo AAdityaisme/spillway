@@ -15,7 +15,8 @@ import {
 } from '../services/alerts/error-rate.js';
 import { runRetentionSweep, type RetentionResult } from './retention.js';
 import { runInsightsScan } from './insights.js';
-import { jobRunsTotal, jobDurationMs } from '../observability/metrics.js';
+import { runPricingSync } from '../db/pricing-sync.js';
+import { jobRunsTotal, jobDurationMs, setPricingStalenessHours } from '../observability/metrics.js';
 import type { ScopeType } from '../services/anomaly/baseline.js';
 
 /**
@@ -38,10 +39,16 @@ const POLLER_INTERVAL_MS = 15_000;
 const ANOMALY_INTERVAL_MS = 3_600_000;
 const RETENTION_INTERVAL_MS = 86_400_000;
 const INSIGHTS_INTERVAL_MS = 604_800_000; // 19 §8: weekly savings-insights regenerate
+const PRICING_SYNC_INTERVAL_MS = 86_400_000; // ch12 §7: daily vendored-snapshot upsert
 const POLLER_STALE_MS = 120_000; // a poller run is seconds; 2min unfinished = crashed
 const ANOMALY_STALE_MS = 1_800_000; // an hourly scan should never take 30min
 const RETENTION_STALE_MS = 14_400_000; // ch12: 4h lease window — may process large volumes
 const INSIGHTS_STALE_MS = 14_400_000; // 4h — a cross-org classify may process large volumes
+const PRICING_SYNC_STALE_MS = 7_200_000; // ch12 §7: 2h lease window (expected <5 min)
+// Boot-time tick runs immediately (all ticks do); skip the upsert when prices are fresher
+// than this so every deploy doesn't rewrite the table, while the daily interval (24h > 20h)
+// always syncs and ch12's "re-run at boot if stale >48h" holds via the same check.
+const PRICING_FRESH_HOURS = 20;
 
 // Stable advisory-lock keys per job (audit L33). hashtext(job) could collide two job names onto one
 // advisory lock and serialize their claim attempts; correctness holds via the `where job=…` filter
@@ -51,6 +58,7 @@ const JOB_LOCK_KEY: Record<string, number> = {
   'anomaly-scan': 2,
   'retention-sweeper': 3,
   'savings-insights': 4,
+  'pricing-sync': 5,
 };
 
 // 19 §2.6 defaults: fire at max(3 × baseline, $5). Per-org alert config overrides land with the
@@ -340,12 +348,54 @@ export async function runInsightsJob(
   }
 }
 
+/**
+ * One leased pricing-sync cycle (ch12 §7; daily, ADR-010 vendored snapshot). Null when the
+ * lease is held. Skips the upsert when prices are fresher than PRICING_FRESH_HOURS (see the
+ * constant's WHY note). Also the live producer for the pricing_staleness_hours gauge — set
+ * from the measured age on skip, 0 after a successful sync (Alert 5 consumes the job.finish
+ * log; Alert 2 / readyz consume the age).
+ */
+export async function runPricingSyncJob(
+  deps: SchedulerDeps,
+): Promise<{ synced: number; skipped?: string; ageHours: number } | null> {
+  const now = deps.now ?? (() => new Date());
+  const runId = await claimJobRun(deps.jobsDb, 'pricing-sync', PRICING_SYNC_STALE_MS, now());
+  if (runId === null) return null;
+  try {
+    const rows = (await asJobs(deps.jobsDb, (tx) =>
+      tx.execute(sql`
+        select extract(epoch from (now() - max(synced_at))) / 3600 as age_h from model_prices`),
+    )) as unknown as { age_h: string | number | null }[];
+    const rawAge = rows[0]?.age_h;
+    const ageHours = rawAge == null ? Number.POSITIVE_INFINITY : Number(rawAge);
+
+    if (ageHours < PRICING_FRESH_HOURS) {
+      setPricingStalenessHours(ageHours);
+      const detail = { synced: 0, skipped: 'fresh', ageHours };
+      await finishJobRun(deps.jobsDb, runId, true, detail);
+      return detail;
+    }
+
+    const { synced } = await asJobs(deps.jobsDb, (tx) => runPricingSync(tx));
+    setPricingStalenessHours(0);
+    const detail = { synced, ageHours: Number.isFinite(ageHours) ? ageHours : -1 };
+    await finishJobRun(deps.jobsDb, runId, true, detail);
+    return detail;
+  } catch (err) {
+    await finishJobRun(deps.jobsDb, runId, false, { error: String(err) }).catch((e) =>
+      deps.log.error({ job: 'pricing-sync', e }, 'finishJobRun failed'),
+    );
+    throw err;
+  }
+}
+
 /** Start the cadence loops. Ticks never overlap themselves; errors are logged, never fatal. */
 export function startScheduler(deps: SchedulerDeps): SchedulerHandle {
   let pollerBusy = false;
   let anomalyBusy = false;
   let retentionBusy = false;
   let insightsBusy = false;
+  let pricingBusy = false;
   let stopped = false;
 
   const tick = async (
@@ -400,16 +450,25 @@ export function startScheduler(deps: SchedulerDeps): SchedulerHandle {
       (b) => (insightsBusy = b),
       () => runInsightsJob(deps),
     );
+  const pricingTick = () =>
+    tick(
+      'pricing-sync',
+      () => pricingBusy,
+      (b) => (pricingBusy = b),
+      () => runPricingSyncJob(deps),
+    );
 
   void pollerTick();
   void anomalyTick();
   void retentionTick();
   void insightsTick();
+  void pricingTick();
   const timers = [
     setInterval(() => void pollerTick(), POLLER_INTERVAL_MS),
     setInterval(() => void anomalyTick(), ANOMALY_INTERVAL_MS),
     setInterval(() => void retentionTick(), RETENTION_INTERVAL_MS),
     setInterval(() => void insightsTick(), INSIGHTS_INTERVAL_MS),
+    setInterval(() => void pricingTick(), PRICING_SYNC_INTERVAL_MS),
   ];
   for (const t of timers) if (typeof t.unref === 'function') t.unref();
 
@@ -421,19 +480,23 @@ export function startScheduler(deps: SchedulerDeps): SchedulerHandle {
       // HIGH #5): an unbounded drain blocked SIGTERM, so Fly's grace timer SIGKILLed active streams. A
       // stuck job's lease ages out via its stale window anyway.
       const deadline = Date.now() + 8_000;
-      while ((pollerBusy || anomalyBusy || retentionBusy || insightsBusy) && Date.now() < deadline)
+      while (
+        (pollerBusy || anomalyBusy || retentionBusy || insightsBusy || pricingBusy) &&
+        Date.now() < deadline
+      )
         await new Promise((r) => setTimeout(r, 25));
       // Timed out with a tick still in flight (audit L31): its lease row is unfinished and would
       // block new claims for the whole stale window (up to 4h for retention). Best-effort mark any
       // of OUR still-unfinished lease rows finished ok=false so a fresh worker can re-claim
       // immediately. This can't touch a row a live worker is about to finish — the only rows this
       // matches are ones whose owning tx is being aborted by pool close.
-      if (pollerBusy || anomalyBusy || retentionBusy || insightsBusy) {
+      if (pollerBusy || anomalyBusy || retentionBusy || insightsBusy || pricingBusy) {
         const busyJobs = [
           pollerBusy ? 'poller' : null,
           anomalyBusy ? 'anomaly-scan' : null,
           retentionBusy ? 'retention-sweeper' : null,
           insightsBusy ? 'savings-insights' : null,
+          pricingBusy ? 'pricing-sync' : null,
         ].filter((j): j is string => j !== null);
         await asJobs(deps.jobsDb, (tx) =>
           tx.execute(sql`

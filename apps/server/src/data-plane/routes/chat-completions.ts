@@ -114,8 +114,19 @@ export const chatCompletionsRoute: FastifyPluginAsync<{ deps: DataPlaneDeps }> =
       releaseParallel(ctx);
       // Release any budget hold that reconcile didn't (pre-dispatch failure: pricing 503, a throw
       // between BUDGET and DISPATCH). Idempotent via ctx.budgetReservationSettled — a no-op once
-      // reconcile has already settled it. Fire-and-forget: never delay the response on the release.
-      void releaseBudgetReservation(ctx);
+      // reconcile has already settled it. Fire-and-forget so the response is never delayed on the
+      // release, but tracked (ADR-033 D6) so app.close() drains it before the DB pool closes.
+      // Start the release UNCONDITIONALLY, then track it. `streamTasks?.track(release(ctx))`
+      // short-circuits the WHOLE expression when streamTasks is nullish — the argument is never
+      // evaluated — so the safety net would silently not fire. It is non-nullish in real wiring, but
+      // this net is now the only release on every path that ends without a FINAL reconcile (reconcile
+      // gates its own release on isFinalAttempt), so it must not depend on that. `.catch` because
+      // track() only does `void p.finally(...)`: an untracked or rejecting release would otherwise be
+      // an unhandled rejection, and this one writes to the DB.
+      const release = releaseBudgetReservation(ctx).catch((e: unknown) => {
+        req.log.error({ e }, 'budget hold release failed');
+      });
+      ctx.deps.streamTasks?.track(release);
     }
   });
 };

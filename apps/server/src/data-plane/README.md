@@ -9,10 +9,16 @@ vice-versa — they share only `@spillway/shared` and the database.
 > jump to [Debugging by symptom](#debugging-by-symptom). Every request carries an
 > `x-spillway-request-id` header that equals the `requests.id` row — start there.
 
-As of M2 Phase B this implements exactly ONE endpoint, non-streaming, OpenAI only, one
-provider candidate, no retry/fallback/budget/rate-limit. Everything else is a documented
-seam (see [Phase seams](#phase-seams)). Don't assume a feature exists because the bible
-describes it — the bible is the destination, this code is where we are.
+The pipeline is complete: four `/v1` endpoints, four provider adapters (`openai`, `anthropic`,
+`gemini`, `openai_compat`), streaming, a health-reordered candidate chain with retry/fallback,
+and budget / rate-limit / guardrail enforcement in the request path.
+
+> This paragraph previously read "as of M2 Phase B this implements exactly ONE endpoint,
+> non-streaming, OpenAI only … no retry/fallback/budget/rate-limit", and the Phase-seams section
+> below listed all of that as not-yet-built. Every item had shipped. Corrected 2026-08-08 —
+> recorded rather than silently deleted, because a stale "not implemented" note is more dangerous
+> than a missing one: it reads as authoritative and talks a contributor out of using code that
+> exists.
 
 ## Request lifecycle
 
@@ -20,9 +26,12 @@ describes it — the bible is the destination, this code is where we are.
 POST /v1/chat/completions
   routes/chat-completions.ts   ← owns the outer try/catch + error response
     → runAuth        (pipeline/auth.ts)      parse key → hash → load policy (cached 30s) → fail-closed
-    → runValidate    (pipeline/validate.ts)  zod → reject stream → allow-lists → size guard → clamp
-    → ROUTE-min                              one concrete candidate: {openai, requestedModel, key}
-    → runDispatch    (dispatch.ts)           decrypt key → transform → fetch upstream → fork on status
+    → runValidate    (pipeline/validate.ts)  zod → allow-lists → size guard → clamps → safe knobs
+    → runRateLimit   (pipeline/ratelimit.ts) RPM/TPM/parallel; 429; acquires the parallel slot
+    → runRoute       (pipeline/route.ts)     PASS-1 guardrails (403 deny/approval) + PASS-2 routing
+    → runBudget      (pipeline/budget.ts)    enforce over the hoisted snapshot; 402 or fallback alias
+    → runPricing     (pipeline/pricing.ts)   every reachable candidate must be priceable before serving
+    → runDispatch    (dispatch.ts)           loop ctx.candidateChain → decrypt → transform → upstream
         2xx → runBodyCapture → SEND RESPONSE → runReconcile   (spend write happens AFTER send)
         non-2xx → runReconcile (error row) → throw (route turns it into the client error)
 ```
@@ -124,16 +133,16 @@ param,code}}`. Client SDKs parse this shape; send anything else (e.g. the contro
 - **A param the client sent didn't reach the provider.** Check the `x-spillway-dropped-params`
   response header — `transform` strips unknown/out-of-range params and records them there.
 
-## Phase seams (what's intentionally NOT here yet)
+## Where each capability actually lives
 
-- **Streaming / SSE** — rejected at VALIDATE today. Phase C adds `createStreamParser` + tee.
-- **Retry / fallback / candidate chain** — `dispatch.ts` runs exactly one candidate. The Phase E
-  seam is the `for (const c of ctx.candidateChain)` loop that would wrap the status fork.
-- **Budgets / rate limits / routing rules / model aliases** — `PolicyBundle` is the Phase-B subset
-  (no budgets/rpm/tpm/aliases). Phase D/E add them.
-- **anthropic / gemini / openai_compat adapters** — only `openai` is registered. Phase D.
-- **Usage estimation** — when upstream usage is absent we record `usage_estimated` zeros; the
-  tokenizer-based estimator is Phase C.
+Every item in this list was previously documented here as a future "phase seam". They all ship.
 
-See `docs/plans/m2-phase-b.md` (local, gitignored) for the full build plan and the ADRs in
-`docs/bible/14-decisions.md` (ADR-024 through ADR-029) for the decision history.
+- **Streaming / SSE** — `streaming/sse-tee.ts` tees the response as it streams, so a streamed call
+  is metered and reconciled like any other. `streaming/sse-parser.ts` parses, `streaming/estimator.ts`
+  covers usage when upstream omits it.
+- **Retry / fallback / candidate chain** — `dispatch.ts` loops `ctx.candidateChain`, health-reordered,
+  each attempt writing its own row.
+- **Budgets / rate limits / guardrails / routing** — `pipeline/budget.ts`, `pipeline/ratelimit.ts`,
+  `pipeline/guardrail-stage.ts`, `pipeline/route.ts`.
+- **Provider adapters** — `providers/registry.ts` registers `openai`, `anthropic`, `gemini`, and
+  `openai_compat`.

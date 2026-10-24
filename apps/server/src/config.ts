@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_ERRORS_DOCS_URL } from '@spillway/shared';
 
 /**
  * The single source of environment configuration (02-architecture §6).
@@ -32,6 +33,18 @@ const base64Bytes = (n: number) =>
     },
   );
 
+/**
+ * Every provider-key encryption version and the env var that carries it (ADR-014).
+ * Adding v3 = one entry here + one optional field on the schema; everything else
+ * (boot validation, `makeEncryptor`, the re-seal target) is driven off this list.
+ */
+export const ENC_KEY_FIELDS = [
+  [1, 'SPILLWAY_ENC_KEY_V1'],
+  [2, 'SPILLWAY_ENC_KEY_V2'],
+] as const;
+
+const MAX_ENC_KEY_VERSION = Math.max(...ENC_KEY_FIELDS.map(([version]) => version));
+
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -56,10 +69,11 @@ const schema = z
     // Defaults to WorkOS's hosted AuthKit issuer. Set this to the custom AuthKit
     // domain when one is configured; issuer matching is exact JWT validation.
     WORKOS_JWT_ISSUER: z.string().url().optional(),
-    // Enforce the JWT `aud` claim when set. WorkOS AuthKit access tokens don't carry a stable
-    // audience on every plan, so this stays opt-in: set it (usually to the client id) once the
-    // WorkOS dashboard confirms the value, and every token missing/mismatching it 401s.
-    WORKOS_JWT_AUD: z.string().min(1).optional(), // min(1): "" must NOT silently disable enforcement (red-team) — omit the var to opt out
+    // Enforce the JWT `aud` claim. Optional in dev/test, REQUIRED in production (see superRefine):
+    // without it, any access token minted by this WorkOS client is accepted no matter which
+    // application it was issued for. Read the value off a decoded token in the WorkOS dashboard —
+    // it is usually the client id. min(1): "" must NOT silently disable enforcement (red-team).
+    WORKOS_JWT_AUD: z.string().min(1).optional(),
     // AuthKit hosted-login flow (M4-auth). The sealed session cookie is encrypted with this
     // password by the WorkOS SDK, so it is a real secret: rotating it logs everyone out.
     // 32 chars is the SDK's floor. Generate: openssl rand -base64 32
@@ -68,8 +82,20 @@ const schema = z
     // Defaults to PUBLIC_URL + /auth/callback so local dev needs no extra config.
     WORKOS_REDIRECT_URI: z.string().url().optional(),
 
-    // Encryption (ADR-014)
-    SPILLWAY_ENC_KEY_V1: base64Bytes(32),
+    // Encryption (ADR-014). Versioned so a compromised key can be rotated OUT with zero downtime:
+    // every version set here is loaded and usable for DECRYPT, but only SPILLWAY_ENC_KEY_CURRENT is
+    // used to ENCRYPT. Rotation runbook: apps/server/src/jobs/reseal-provider-keys.ts.
+    //
+    // V1 is `.optional()` at the field level ONLY so a COMPLETED rotation can retire it. It is still
+    // hard-required whenever SPILLWAY_ENC_KEY_CURRENT is 1 — which is the default and therefore every
+    // deployment that predates rotation — so a V1-only env behaves exactly as it did before.
+    SPILLWAY_ENC_KEY_V1: base64Bytes(32).optional(),
+    SPILLWAY_ENC_KEY_V2: base64Bytes(32).optional(),
+    // Which version new secrets are sealed under. Setting V2 while this stays 1 is the intended
+    // pre-cutover state: every instance loads the new key first (so it can decrypt anything an
+    // already-flipped peer wrote), and only then does the flip to 2 roll out. Flipping first would
+    // mean a not-yet-updated instance meeting a v2 row it has no key for.
+    SPILLWAY_ENC_KEY_CURRENT: z.coerce.number().int().min(1).max(MAX_ENC_KEY_VERSION).default(1),
 
     // Approval action links (ADR-019i) — 32-byte hex HMAC key (openssl rand -hex 32)
     SPILLWAY_ACTION_TOKEN_SECRET: z
@@ -96,6 +122,10 @@ const schema = z
     // Domain / CORS
     PUBLIC_URL: z.string().url().default('http://localhost:3000'),
     DASHBOARD_ORIGIN: z.string().url().optional(),
+    // Docs host every API error's `docs_url` links into (errors.ts). Defaults to the hosted
+    // Mintlify errors reference; the docs domain is still in flux, so this stays overridable
+    // rather than hardcoded again.
+    SPILLWAY_DOCS_URL: z.string().url().default(DEFAULT_ERRORS_DOCS_URL),
 
     // Observability
     METRICS_TOKEN: z.string().optional(),
@@ -113,10 +143,38 @@ const schema = z
     FIXTURE_GEMINI_API_KEY: z.string().optional(),
   })
   .superRefine((cfg, ctx) => {
+    // ── Encryption-key coherence (ADR-014 rotation) ────────────────────────────────────────────
+    // Encryptor's constructor also throws on a current version with no key, but that fires later,
+    // during plugin build, as a bare Error — after boot has already accepted the environment. Catch
+    // it here so it is reported in the same batch and the same format as every other env problem.
+    const currentField = ENC_KEY_FIELDS.find(([v]) => v === cfg.SPILLWAY_ENC_KEY_CURRENT)?.[1];
+    if (!currentField || !cfg[currentField]) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SPILLWAY_ENC_KEY_CURRENT'],
+        message: `is ${cfg.SPILLWAY_ENC_KEY_CURRENT}, but SPILLWAY_ENC_KEY_V${cfg.SPILLWAY_ENC_KEY_CURRENT} is not set — the version new secrets are sealed under must have a key`,
+      });
+    }
+    // Two versions holding the SAME key material is a rotation that rotates nothing: the re-seal
+    // walks every provider key, stamps enc_version=2, reports success — and the compromised key
+    // still opens all of it. Nothing downstream can detect this, so it has to die at boot.
+    if (cfg.SPILLWAY_ENC_KEY_V1 && cfg.SPILLWAY_ENC_KEY_V1 === cfg.SPILLWAY_ENC_KEY_V2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SPILLWAY_ENC_KEY_V2'],
+        message:
+          'is identical to SPILLWAY_ENC_KEY_V1 — that is not a rotation. Generate a NEW key (openssl rand -base64 32)',
+      });
+    }
+
     if (cfg.NODE_ENV === 'production') {
       const requiredInProd: Array<[keyof typeof cfg, string]> = [
         ['WORKOS_API_KEY', 'required in production (WorkOS AuthKit secret key)'],
         ['WORKOS_CLIENT_ID', 'required in production (WorkOS client id; JWKS issuer)'],
+        [
+          'WORKOS_JWT_AUD',
+          'required in production (JWT `aud` claim; without it ANY token from this WorkOS client is accepted). Take the value from a decoded access token in the WorkOS dashboard — usually the client id.',
+        ],
         [
           'WORKOS_COOKIE_PASSWORD',
           'required in production (seals the AuthKit session cookie; ≥32 chars)',

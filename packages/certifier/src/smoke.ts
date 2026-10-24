@@ -39,10 +39,18 @@ export function planWithinBudget(
   calls: readonly PlannedCall[],
   capUsd: number = DEFAULT_SPEND_CAP_USD,
 ): Array<{ call: PlannedCall; run: boolean }> {
-  let spent = 0;
+  // Accumulate in integer µUSD, not float dollars (ADR-019e). The per-call estimates arrive as
+  // floats and stay floats — that part is the caller's boundary — but `spent += cost` REPEATED in
+  // float is where a spend guard actually drifts, and this is the runaway-spend guard. Rounding
+  // each estimate to µUSD once and summing exactly means the cap is compared against a number
+  // that cannot wander. Found by the widened money semgrep rule (red-team H3), 2026-08-08.
+  const toMicro = (usd: number): bigint => BigInt(Math.round(usd * 1_000_000));
+  const capMicro = toMicro(capUsd);
+  let spentMicro = 0n;
   return calls.map((call) => {
-    if (spent + call.estimatedCostUsd > capUsd) return { call, run: false };
-    spent += call.estimatedCostUsd;
+    const costMicro = toMicro(call.estimatedCostUsd);
+    if (spentMicro + costMicro > capMicro) return { call, run: false };
+    spentMicro += costMicro;
     return { call, run: true };
   });
 }

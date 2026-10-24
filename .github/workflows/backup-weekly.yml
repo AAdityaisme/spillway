@@ -1,0 +1,166 @@
+# .github/workflows/backup-weekly.yml  (tools/backup/README.md — 12-operations §5.2)
+#
+# Runs the portable logical-dump escape hatch (independent of Neon's managed PITR) and lands the
+# gzipped pg_dump as a GitHub Actions artifact. Wiring is deliberately unmodified from
+# tools/backup/backup-weekly.sh's own contract (DATABASE_URL + BACKUP_S3_BUCKET, rclone required)
+# — see the BACKUP_S3_BUCKET comment below for how that's satisfied without real object storage.
+#
+# The dump is encrypted with age (asymmetric, public-key-only in CI — see the "Install age" and
+# "Encrypt backup dump(s)" steps below) before it is ever handed to actions/upload-artifact.
+# Reason: any repo collaborator with read access can download a workflow artifact, and this repo
+# (AAdityaisme/v2) is private today but is slated for a mirror cutover — the day PROD_DATABASE_URL
+# ends up reachable from a public-facing repo, an unencrypted artifact turns a scheduled cron job
+# into a full prod-data leak with zero additional steps. Encrypting with a public key means a
+# compromised runner or a leaked artifact yields ciphertext only; decryption needs the private key,
+# which never touches CI (see tools/backup/README.md for where it lives).
+#
+# No-ops cleanly (green, with a ::notice::) until PROD_DATABASE_URL exists. Once it does, the
+# encryption key (BACKUP_AGE_PUBLIC_KEY) becomes mandatory — missing it is a hard failure, not a
+# silent plaintext fallback (see check-secret below).
+name: Weekly backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * 0' # weekly, Sunday 05:00 UTC — a day ahead of staging-drills.yml's Monday run
+
+concurrency:
+  group: backup-weekly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check-secret:
+    name: check PROD_DATABASE_URL + BACKUP_AGE_PUBLIC_KEY
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      # Two independent conditions, not symmetric: no DB URL is the expected pre-prod state (green
+      # no-op), but DB URL present + no encryption key is a misconfiguration that would otherwise
+      # let pg_dump run and hand actions/upload-artifact a plaintext prod dump — that must fail the
+      # job outright, never fall back to uploading unencrypted.
+      - name: Gate on PROD_DATABASE_URL and BACKUP_AGE_PUBLIC_KEY
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -z "${PROD_DATABASE_URL:-}" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Weekly backup skipped — PROD_DATABASE_URL is not set."
+          elif [ -z "${BACKUP_AGE_PUBLIC_KEY:-}" ]; then
+            echo "::error::PROD_DATABASE_URL is set but BACKUP_AGE_PUBLIC_KEY is not. Refusing to run pg_dump: with no encryption key the artifact upload would ship a full production dump as plaintext to anyone with repo read access. Set BACKUP_AGE_PUBLIC_KEY as a repo secret (the public half of an 'age-keygen' keypair — see tools/backup/README.md) before this workflow can run."
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BACKUP_AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+
+  backup:
+    name: pg_dump prod -> artifact
+    needs: check-secret
+    if: needs.check-secret.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # backup-weekly.sh reads DATABASE_URL (source db) and BACKUP_S3_BUCKET (rclone remote:path) —
+    # mapped straight from its documented contract (tools/backup/README.md), not touched here.
+    env:
+      DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+
+      - name: Install rclone
+        run: sudo apt-get update && sudo apt-get install -y rclone
+
+      # Pinned release, same style as security.yml's actions-supply-chain job (curl -sSfL |
+      # tar -xz <member>). age is encrypt-only from here: only the PUBLIC key ever reaches CI
+      # (BACKUP_AGE_PUBLIC_KEY, below), so this binary can produce ciphertext but never decrypt.
+      - name: Install age (encrypt-only backup tool, pinned release)
+        run: |
+          set -euo pipefail
+          VER=1.3.1
+          curl -sSfL "https://github.com/FiloSottile/age/releases/download/v${VER}/age-v${VER}-linux-amd64.tar.gz" | tar -xz age/age
+          sudo install -m 0755 age/age /usr/local/bin/age
+          rm -rf age
+
+      # The script's contract requires an rclone remote:path and hard-fails (`command -v rclone`)
+      # if the binary is missing — but Phase 0 has no object-storage remote provisioned yet
+      # (tools/backup/README.md: "stand this up before any customer data lands... do NOT wait for
+      # M6"; object storage IS a later phase). A bare path with no `remote:` prefix makes rclone
+      # use its local backend, so the script's `rclone copyto`/`rclone delete --min-age` calls run
+      # UNMODIFIED against runner-local disk — the artifact upload step below is the actual
+      # Phase-0 offsite tier, standing in for R2/S3 until that's wired up. (`runner` context isn't
+      # available in job-level `env:`, hence computing this in a step instead.) The dump written
+      # here is plaintext only until the Encrypt step below runs — nothing plaintext-shaped is
+      # allowed past the Verify step that follows it, and the upload path glob only matches *.age.
+      - name: Compute backup output directory
+        run: |
+          echo "BACKUP_S3_BUCKET=${{ runner.temp }}/spillway-backup-out" >> "$GITHUB_ENV"
+
+      - run: mkdir -p "$BACKUP_S3_BUCKET"
+
+      - name: Run backup-weekly.sh
+        run: tools/backup/backup-weekly.sh
+
+      # Encrypts in place and deletes the plaintext .sql.gz as each file is encrypted, so a crash
+      # mid-loop can never leave a plaintext dump sitting next to its finished ciphertext sibling.
+      - name: Encrypt backup dump(s) with age
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          dumps=("$BACKUP_S3_BUCKET"/weekly/*.sql.gz)
+          if [ ${#dumps[@]} -eq 0 ]; then
+            echo "::error::No .sql.gz dump found in $BACKUP_S3_BUCKET/weekly/ to encrypt — backup-weekly.sh should have produced one."
+            exit 1
+          fi
+          for f in "${dumps[@]}"; do
+            age -r "$BACKUP_AGE_PUBLIC_KEY" -o "${f}.age" "$f"
+            rm -f "$f"
+          done
+        env:
+          BACKUP_AGE_PUBLIC_KEY: ${{ secrets.BACKUP_AGE_PUBLIC_KEY }}
+
+      # Belt-and-suspenders check, independent of the upload step's path glob: fails the job
+      # outright if anything unencrypted survived the step above, instead of trusting the glob
+      # alone to keep plaintext out of the artifact. `if: always()` because the upload step below
+      # is also always() (so a partial/failed run's output is still inspectable) — this must run
+      # ahead of it under the same conditions, or a failure between dump and encrypt could let a
+      # bare .sql.gz reach upload unnoticed.
+      - name: Verify no plaintext dump remains
+        if: always()
+        run: |
+          set -euo pipefail
+          dir="$BACKUP_S3_BUCKET/weekly"
+          if [ ! -d "$dir" ]; then
+            echo "No output directory ($dir) — nothing to verify."
+            exit 0
+          fi
+          plaintext=$(find "$dir" -type f ! -name '*.age')
+          if [ -n "$plaintext" ]; then
+            echo "::error::Unencrypted dump file(s) found in $dir — refusing to let the upload step ship them:"
+            echo "$plaintext"
+            exit 1
+          fi
+          echo "Verified: $dir contains only *.age (encrypted) files."
+
+      - name: Upload backup artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: spillway-prod-backup-${{ github.run_id }}
+          # Only *.age (age-encrypted) files match — a plaintext .sql.gz next to its encrypted
+          # sibling (e.g. the Encrypt step above dying between age and rm) would simply not match
+          # this glob rather than upload. This is the structural half of the guarantee; the Verify
+          # step above is the explicit half.
+          path: ${{ env.BACKUP_S3_BUCKET }}/weekly/*.age
+          # 14d, not the old 30d: the old number sized the artifact as the offsite tier itself and
+          # wanted maximum retained history. Now that the payload is ciphertext, the driving
+          # concern flips to cost/quota (private-repo Actions storage is billed) rather than
+          # exposure window. 14d covers two weekly runs of overlap — enough to fall back to last
+          # week's encrypted dump if this week's run is bad — without accumulating indefinitely.
+          retention-days: 14
+          if-no-files-found: error

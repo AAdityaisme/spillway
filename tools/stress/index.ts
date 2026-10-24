@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
+// undici is a direct root devDependency pinned to the SERVER's major on purpose — see
+// package.json's _comment_undici. A MockAgent from a different undici major silently
+// never answers the server's fetch.
 import { MockAgent } from 'undici';
 import { makeTestApp, type TestHarness } from '../../apps/server/test/helpers/app.js';
 import { makeEffectRegistry } from '../../apps/server/src/services/effects/registry.js';

@@ -1,7 +1,8 @@
-# .github/workflows/deploy.yml  (12-operations §3.4)
+# .github/workflows/deploy.yml  (12-operations §3.4; Ring 4/5 gates per bible §0.6-0.7)
 #
-# M0 NOTE: trigger is `workflow_dispatch` (manual) until Fly is provisioned at M6.
-# At M6, switch the trigger to the bible's intended:
+# M0 NOTE (Phase 0 — release gates wired, Fly infra not yet provisioned):
+# trigger stays `workflow_dispatch` (manual) until Fly is provisioned at Half B. At Half B,
+# switch the trigger to:
 #     on:
 #       push:
 #         branches: [main]
@@ -10,6 +11,9 @@ name: Deploy
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -39,9 +43,10 @@ jobs:
       SPILLWAY_ENC_KEY_V1: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= # 32 zero-bytes, base64; test only
       PORT: '3001'
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version: '22', cache: 'pnpm' }
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:packages
@@ -56,14 +61,69 @@ jobs:
       - run: pnpm migration-lint
       - run: pnpm build
 
+  # The k6 SLO gate is NOT here — it is Ring 4 (`slo-load`) in release-gates.yml, which owns the
+  # whole ring pipeline (image smoke → SBOM/scan → migration drill → SLO → bluegreen). This
+  # workflow is the manual-dispatch deploy path only; duplicating the gate here would mean two k6
+  # scripts and two definitions of the same SLO drifting apart.
   deploy:
-    needs: test
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
       # Pinned to a release SHA, not @master — a compromised master would run with our live
       # FLY_API_TOKEN in scope (expanded-audit LOW). ed8efb3 == tag 1.6. Bump deliberately.
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1
-      - run: flyctl deploy --remote-only
+      # flyctl auth docker logs the local Docker daemon into registry.fly.io using
+      # FLY_API_TOKEN, so the buildx push below (a plain registry push, no flyctl involved)
+      # has credentials for Fly's registry.
+      - run: flyctl auth docker
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # Third-party action running after `flyctl auth docker` above → it and the push step below
+      # hold live registry.fly.io credentials in scope, same rationale as the flyctl pin above.
+      # Same pins as release-gates.yml. bb05f3f == v4.2.0.
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      # Pushes a SHA-tagged image independent of flyctl's own release numbering, so
+      # scripts/rollback.sh can target an exact commit (bible §0.7.4) rather than
+      # whatever release number Fly assigned.
+      # Third-party action with `push: true` → runs with the registry.fly.io credentials from
+      # `flyctl auth docker` above. 53b7df9 == v7.3.0.
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: registry.fly.io/spillway:deployment-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # Deploy THE IMAGE JUST PUSHED, never `--remote-only`. --remote-only makes Fly run its own
+      # build from the Dockerfile, so the artifact that reaches production is not the artifact this
+      # job built, scanned and tagged — and scripts/rollback.sh, which rolls back by
+      # `deployment-<sha>`, would then restore an image that never served traffic. --image also
+      # skips a redundant second build. (Greptile flagged this on PR #1.)
+      - run: flyctl deploy --image "registry.fly.io/spillway:deployment-${DEPLOY_SHA}"
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DEPLOY_SHA: ${{ github.sha }}
+      # Deploy log per bible §0.7.5: sha, actor, migration count. The SLO result is NOT here —
+      # this is the manual path; Ring 4 in release-gates.yml records it for the ring pipeline.
+      # github.* values go through env, never straight into the shell (zizmor template-injection).
+      - name: Write deploy log
+        if: always()
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          DEPLOY_ACTOR: ${{ github.actor }}
+        run: |
+          migration_count=$(find apps/server/src/db/migrations -maxdepth 1 -name '[0-9]*.sql' | wc -l | tr -d ' ')
+          {
+            echo "sha=${DEPLOY_SHA}"
+            echo "actor=${DEPLOY_ACTOR}"
+            echo "migration_count=${migration_count}"
+          } | tee deploy-log.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: deploy-log-${{ github.sha }}
+          path: deploy-log.txt
+          retention-days: 30

@@ -1,0 +1,58 @@
+# fly.staging.toml  (Fly.io v2 format)
+# Staging mirror of fly.toml (bible §0.8): separate app, separate Neon project/branch,
+# separate WorkOS environment. Never shares secrets or Postgres with prod fly.toml.
+app = "spillway-staging"
+primary_region = "iad"          # us-east (IAD). Change with: fly scale count --region
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  LOG_LEVEL = "info"
+  # MUST match `fly scale count`. The 17 §3.6 singleton guard reads this; the in-process
+  # rate limiter + policy cache are single-instance until the ADR-016 Redis bundle lands.
+  # Staging runs 2 machines (min_machines_running below) to get true bluegreen — bump this
+  # to match if you scale further, so the guard warns (limits become ~N x nominal per node).
+  SPILLWAY_INSTANCE_COUNT = "2"
+
+# Release command: runs migrations before new VM takes traffic.
+# Migrations run via the programmatic migrator (dist/apps/server/src/db/migrate.js) — it
+# bootstraps the app/jobs roles, then applies pending migrations with drizzle-orm's
+# postgres-js migrator against MIGRATION_DATABASE_URL. Not `drizzle-kit migrate` directly.
+[deploy]
+  # migrate.ts has an import.meta.url main-guard → running it directly invokes
+  # runMigrations(). (Earlier `node -e "require(...esm...)"` failed: require-of-ESM
+  # is not default-on until Node 22.12; runtime image is node:22.4.)
+  release_command = "node dist/apps/server/src/db/migrate.js"
+  # Default 5m is marginal for a cold migration run that includes role bootstrapping (bible §0.7.3).
+  release_command_timeout = "10m"
+  # min_machines_running = 2 below gives bluegreen a real second machine to hold traffic on
+  # while the new release's health checks run (bible §0.8.3) — prod also declares bluegreen
+  # (§0.7.1 MUST) but only has 1 machine (ADR-015), so staging is the one where bluegreen is
+  # actually meaningful until that prod machine-count tension is resolved via ADR.
+  strategy = "bluegreen"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = false        # ADR-015: no scale-to-zero; in-process rate limiters require persistence
+  auto_start_machines = true
+  min_machines_running = 2          # required for true bluegreen (bible §0.8.3); prod stays at 1 (ADR-015)
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250                # reject with 503 above; prevents memory OOM under burst
+    soft_limit = 200                # Fly starts another machine above this if autoscale enabled
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"

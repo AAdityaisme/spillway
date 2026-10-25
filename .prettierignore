@@ -4,6 +4,7 @@ apps/landing/
 # `prettier --check .` would walk it. Keep this entry: the ignore is what stops a local-only
 # design doc from failing the lint gate for everyone.
 docs/design/
+_archive/
 
 # Generated / vendored
 **/dist/

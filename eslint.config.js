@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       'apps/landing/**', // founder creative direction — not linted (ADR-019j)
       'docs/**',
+      '_archive/**',
       'coverage/**',
       'apps/web/dist/**',
       'ops/k6/**', // k6 load scripts run in the k6 runtime (its own globals: __ENV) — not node/TS
